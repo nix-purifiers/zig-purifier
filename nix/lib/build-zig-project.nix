@@ -5,14 +5,15 @@
 #
 # The file is a package for callPackage: the first argument set is what it
 # takes from the package set, and the result is the builder. The
-# zig-purifier overlay (`overlays.default`) adds it to the package set as
-# `buildZigProject`, so a package written for callPackage takes it like any
-# other builder:
+# zig-purifier overlay (`overlays.default`) adds the scope `zig-purifier`
+# to the package set, and the scope holds the builder beside the command and
+# the toolchain. A package written for callPackage takes the scope by name:
 #
-#   { buildZigProject }: (buildZigProject { src = ./.; }).packages.hello
+#   { zig-purifier }: (zig-purifier.buildZigProject { src = ./.; }).packages.hello
 #
-# `buildZigProject.override` replaces what it takes from the set, such as
-# `fetchurl` or the zig of a version.
+# `zig-purifier.buildZigProject.override` replaces what the builder takes,
+# such as `fetchurl` or the zig of a version, and
+# `zig-purifier.overrideScope` replaces what everything in the scope shares.
 #
 # The result is an attribute set:
 #
@@ -40,9 +41,9 @@
   # entries.
   fetchurl,
   fetchgit,
-  # The zig-purifier package scope, whose `cli` is the builder of the
-  # package cache and the release.
-  zig-purifier,
+  # The zig-purifier command, from the zig-purifier scope: the builder of
+  # the package cache and the release.
+  cli,
   # The zigs a lock can name. The zig of a build is the one of the version
   # the lock was made with; `zig` is the default zig of nixpkgs.
   zig,
@@ -106,7 +107,7 @@ let
 
   flags = if buildFlags != null then buildFlags else output.buildFlags;
 
-  cli = "${zig-purifier.cli}/bin/zig-purifier";
+  cliBin = "${cli}/bin/zig-purifier";
   zigBin = "${zig'}/bin/zig";
 
   fetch = purifier.fetchEntry ({ inherit fetchurl fetchgit; } // fetchers);
@@ -115,9 +116,9 @@ let
       inherit
         entries
         fetch
-        cli
         system
         ;
+      cli = cliBin;
       zig = zigBin;
     })
     packages
@@ -208,7 +209,7 @@ let
   release = derivation {
     name = "${name}-${output.version}-release";
     inherit system;
-    builder = cli;
+    builder = cliBin;
     args = [
       "release"
       zigBin

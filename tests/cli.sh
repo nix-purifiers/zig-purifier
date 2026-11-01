@@ -52,7 +52,7 @@ build_package() {
         system = builtins.currentSystem;
         overlays = [ flake.overlays.default ];
       };
-    in (pkgs.buildZigProject {
+    in (pkgs.zig-purifier.buildZigProject {
       src = /. + \"$1\"; projectDir = \"hello\"; $lock_arg
     }).packages.hello"
 }

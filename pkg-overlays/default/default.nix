@@ -1,12 +1,12 @@
 # SPDX-License-Identifier: MIT
 #
-# The default package overlay. It adds the packages of pkgs/ under
-# `pkgs.zig-purifier`: the command (`.cli`) and the default toolchain
-# (`.toolchain`). It adds the builder `pkgs.buildZigProject`
-# (nix/lib/build-zig-project.nix) beside them, where nixpkgs keeps its own
-# builders, so a package written for callPackage takes it by name. The
-# builder checks and fetches the lock with the purifier library, which this
-# flake lists in `projects`, so its composed library holds it as
+# The default package overlay. It adds one attribute to the package set:
+# the scope `pkgs.zig-purifier`, made with lib.makeScope. The scope holds
+# the packages of pkgs/ (the command `.cli` and the default toolchain
+# `.toolchain`) and the builder `.buildZigProject`
+# (nix/lib/build-zig-project.nix), a package for callPackage in that scope.
+# The builder checks and fetches the lock with the purifier library, which
+# this flake lists in `projects`, so its composed library holds it as
 # `purifier`. A consumer that lists this flake in `projects` holds this
 # overlay as `zig-purifier/default`, which its package sets apply by
 # default.
@@ -17,10 +17,17 @@ in
 {
   overlay =
     final: prev:
-    packages final prev
+    let
+      added = packages final prev;
+    in
+    added
     // {
-      buildZigProject = final.callPackage ../../nix/lib/build-zig-project.nix {
-        inherit (closure-lib) purifier;
-      };
+      zig-purifier = added.zig-purifier.overrideScope (
+        scope: _: {
+          buildZigProject = scope.callPackage ../../nix/lib/build-zig-project.nix {
+            inherit (closure-lib) purifier;
+          };
+        }
+      );
     };
 }

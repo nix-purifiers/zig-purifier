@@ -15,13 +15,13 @@ let
   pkgs' = pkgs.extend overlay;
   inherit (pkgs') lib runCommand;
   cli = pkgs'.zig-purifier.cli;
-  build = pkgs'.buildZigProject;
+  build = pkgs'.zig-purifier.buildZigProject;
 
   # The hello fixture as a consumer writes it: a package for callPackage
   # that takes the builder by name.
   helloPackage = pkgs'.callPackage (
-    { buildZigProject }:
-    (buildZigProject {
+    { zig-purifier }:
+    (zig-purifier.buildZigProject {
       src = ./fixtures;
       projectDir = "hello";
     }).packages.hello

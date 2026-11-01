@@ -25,14 +25,15 @@ The toolchains are `toolchain-zig_0_14`, `toolchain-zig_0_15`,
 `toolchain-zig_0_16`, and `toolchain` for the default zig of nixpkgs
 (0.17). The lock records the zig version, and the build uses the same one.
 
-Commit `zig-purifier.lock.json`. The flake's overlay adds the builder
-`buildZigProject` to the package set, and a package for `callPackage`
-takes it by name:
+Commit `zig-purifier.lock.json`. The flake's overlay adds one attribute
+to the package set, the scope `zig-purifier`, which holds the builder
+`buildZigProject` beside the command and the toolchain. A package for
+`callPackage` takes the scope by name:
 
 ```nix
 # package.nix
-{ buildZigProject }:
-(buildZigProject { src = ./.; }).packages.hello
+{ zig-purifier }:
+(zig-purifier.buildZigProject { src = ./.; }).packages.hello
 ```
 
 ```nix
@@ -51,7 +52,7 @@ takes it by name:
     in
     {
       packages.${system}.default = pkgs.callPackage ./package.nix { };
-      checks.${system}.test = (pkgs.buildZigProject { src = ./.; }).tests;
+      checks.${system}.test = (pkgs.zig-purifier.buildZigProject { src = ./.; }).tests;
     };
 }
 ```
@@ -73,9 +74,19 @@ buildZigProject {
 }
 ```
 
-`buildZigProject` takes `fetchurl`, `fetchgit`, the zigs and the
-zig-purifier package scope from the package set by name, and
-`buildZigProject.override` replaces any of them.
+`buildZigProject` takes `fetchurl`, `fetchgit`, the zigs and the `cli`
+of the scope by name. `zig-purifier.buildZigProject.override` replaces any
+of them, and `zig-purifier.overrideScope` replaces what everything in the
+scope shares.
+
+Zig has no lockfile of its own, so `buildZigProject`, `readLock` and the
+commands take no argument for one. `build.zig.zon` is the manifest of the
+package, which the build reads from `src` with the rest of the package.
+
+We recommend committing `zig-purifier.lock.json` to the package's
+repository, beside `build.zig.zon`, where the builder and the commands look
+for it by default. A flake can instead keep it outside the tree and pass
+it as `lockFile`, which the build then uses in place of any copy in `src`.
 
 Its result is an attribute set, and every name in it is known when Nix
 evaluates the build, without building it:
@@ -135,10 +146,11 @@ dependencies are pinned by the `build.zig.zon` of the package that names
 them, so they move only when that package does. `zig-purifier lock`
 leaves `build.zig.zon` as it is.
 
-To keep the lockfile outside the project, as for a package whose
-`build.zig.zon` belongs to someone else, pass `--lockfile PATH` to the
-commands, or set `ZIG_PURIFIER_LOCKFILE` (which the `zig` wrapper reads
-too), and pass the same path to the builder as `lockFile`.
+A flake that keeps the lockfile outside the tree, such as one that builds
+a package published by someone else, passes its path to the commands as
+`--lockfile PATH`, or sets `ZIG_PURIFIER_LOCKFILE`, which the `zig`
+wrapper reads too. Its dev shell can set the variable to the path it
+passes to the builder as `lockFile`.
 
 To publish a release, run `zig-purifier publish TAG`. Zig has no package
 registry: a package is published as an archive at a URL that others name
@@ -236,8 +248,8 @@ Then add a `package.nix` and a `flake.nix` beside its `build.zig.zon`:
 
 ```nix
 # package.nix
-{ buildZigProject }:
-(buildZigProject { src = ./.; }).packages.zls
+{ zig-purifier }:
+(zig-purifier.buildZigProject { src = ./.; }).packages.zls
 ```
 
 ```nix

@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-{ ... }:
+{ closure-lib, ... }:
 {
   config,
   inputs,
@@ -8,7 +8,14 @@
 }:
 {
 
-  imports = [ inputs.flake-parts.flakeModules.partitions ];
+  imports = [
+    inputs.flake-parts.flakeModules.partitions
+    closure-lib.caisson.modules.flake."purifier/purifier-packages"
+  ];
+
+  # The flake publishes the derivations of the scope `pkgs.zig-purifier` as
+  # its packages; the scope also holds the builder, which is a function.
+  purifier.scope = "zig-purifier";
 
   debug = false;
   caisson = {
@@ -16,13 +23,10 @@
       inherit (libOverlays) default;
     };
 
-    # The packages are the `default` entry of this flake's package overlay
+    # The scope is the `default` entry of this flake's package overlay
     # registry (pkg-overlays/): the package set applies it by default, and
     # the flake exports it as `pkgOverlays` and as the plain
     # `overlays.default`.
-    nixpkgs = {
-      packages.export.enabled = true;
-    };
   };
 
   # `nix run github:nix-purifiers/zig-purifier -- lock` locks the Zig
@@ -33,7 +37,7 @@
   # `nix develop github:nix-purifiers/zig-purifier` gives a shell whose
   # `zig` runs against the package's locked downloads.
   perSystem =
-    { config, pkgs, ... }:
+    { pkgs, ... }:
     let
       # A toolchain for each zig version the package set provides with a
       # ZLS of the same version.
@@ -45,7 +49,7 @@
         map
           (name: {
             name = "toolchain-${name}";
-            value = config.packages.toolchain.override {
+            value = pkgs.zig-purifier.toolchain.override {
               zig = pkgs.${name};
               zls = pkgs.${zlsOf name};
             };
@@ -62,11 +66,11 @@
     in
     {
       packages = {
-        default = config.packages.toolchain;
+        default = pkgs.zig-purifier.toolchain;
       }
       // toolchains;
       devShells.default = pkgs.mkShell {
-        packages = [ config.packages.toolchain ];
+        packages = [ pkgs.zig-purifier.toolchain ];
       };
     };
 
