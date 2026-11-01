@@ -890,6 +890,14 @@ def command_zig(args):
     such as `zig fetch --save`, which adds a dependency, runs as it is."""
     zig = zig_command()
     project_dir = find_project(".")
+    if os.environ.get("ZIG_PURIFIER") != "0" and (
+        project_dir is None or read_lock(project_dir) is None
+    ):
+        print(
+            "zig-purifier: warning: no zig-purifier.lock.json found; running zig impurely. Run `zig-purifier lock` to use Nix-resolved dependencies.",
+            file=sys.stderr,
+        )
+        os.execvp(zig, [zig] + args)
     if (
         project_dir is not None
         and os.environ.get("ZIG_PURIFIER") != "0"
