@@ -8,8 +8,8 @@
 # Nix has both in its store already, from running the command.
 #
 # Without nixpkgs, the library fetches a file entry with Nix's built-in
-# fetcher, at the store path nixpkgs' fetchurl gives it. A git entry goes
-# to builtins.fetchGit, which checks the same NAR hash nix-prefetch-git
+# fetcher, at the store path nixpkgs' fetchurl gives it, and a git entry
+# with builtins.fetchGit, which checks the same NAR hash nix-prefetch-git
 # reports for a checkout without its .git directory.
 {
   libDir ? ./.,
@@ -19,34 +19,5 @@ let
   fetchPinned = locked: builtins.fetchTree (removeAttrs locked [ "lastModified" ]);
   lib = import "${fetchPinned pins.nixpkgsLib}/lib";
   purifier = import (fetchPinned pins.purifier) { inherit lib; };
-
-  fetchgit =
-    {
-      url,
-      rev,
-      hash,
-      fetchSubmodules,
-      leaveDotGit,
-      ...
-    }:
-    assert !leaveDotGit;
-    builtins.fetchGit {
-      inherit url rev;
-      narHash = hash;
-      submodules = fetchSubmodules;
-      allRefs = true;
-    };
-  fetchEntry = purifier.fetchEntry { inherit fetchgit; };
 in
-# The library asks for `pkgs` for a git entry even when it has its own
-# fetchgit, so a git entry goes to fetchgit here, with the arguments the
-# library would pass.
-entry:
-if entry ? git then
-  fetchgit {
-    inherit (entry.git) url rev leaveDotGit;
-    inherit (entry) hash;
-    fetchSubmodules = entry.git.submodules;
-  }
-else
-  fetchEntry entry
+purifier.fetchEntry { }

@@ -178,7 +178,11 @@ another with zig 0.17.
 
 - [ZLS](https://github.com/zigtools/zls), the Zig language server, at its
   0.15.1 release (`f91b2e1e`), with zig 0.15: four archive dependencies,
-  one of them lazy. CI builds it from the lockfile in `tests/projects/zls`.
+  one of them lazy. The lock takes about a minute, most of it the build in
+  the sandbox. CI builds ZLS from the lockfile in `tests/projects/zls`.
+  As an editor test, ZLS ran on its own source after `zig-purifier sync`,
+  with every download blocked, and resolved `@import("known-folders")` to
+  the locked package.
 
 ## Development
 
