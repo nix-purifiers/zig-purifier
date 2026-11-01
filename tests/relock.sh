@@ -14,6 +14,7 @@ relock() {
 }
 
 relock toolchain-zig_0_15 tests/fixtures/hello
+relock toolchain-zig_0_15 tests/fixtures/outdated
 relock toolchain tests/fixtures/readme
 
 # The stale fixture keeps the hello lockfile beside a changed build.zig.zon.

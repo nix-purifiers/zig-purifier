@@ -1,21 +1,20 @@
 # SPDX-License-Identifier: MIT
 #
-# The zig package cache of a lockfile: each locked download unpacked by
-# `zig fetch` into the package directory zig would make for it, and a
-# directory linking each one under its zig hash, which a build puts at
-# `$ZIG_GLOBAL_CACHE_DIR/p`.
+# The zig package cache of a lock: each locked download unpacked into the
+# package directory zig would make for it, and a directory linking each
+# one under its zig hash, which a build puts where zig looks for packages.
 #
-# `zig fetch` of the local copy is how zig itself turns a download into a
-# package: it unpacks the archive, keeps the files under the package's
-# `paths`, and computes the hash. The builder checks that hash against the
-# one the lock recorded, so a download that differs from what build.zig.zon
-# names fails here.
+# `zig-purifier materialize` unpacks a download the way zig does, and
+# checks that `zig fetch` gives the result the hash the lock recorded, so a
+# download that differs from what build.zig.zon names fails here.
 #
 # Needs no nixpkgs: the zig-purifier command is the builder of both
-# derivations, so the zig wrapper and a sandboxed build make the same
+# derivations, so the command and a sandboxed build make the same
 # derivations and share their store paths.
 {
-  lock,
+  # The download entries of the lock, each with its `zigHash`.
+  entries,
+  # The fetch of one entry: the purifier library's fetchEntry.
   fetch,
   # The zig-purifier command and the zig executable, as store paths with
   # their string context.
@@ -24,26 +23,34 @@
   system,
 }:
 let
+  # A store path name for a zig hash: every character a store path name
+  # does not allow becomes "_".
+  storeName =
+    hash:
+    builtins.concatStringsSep "" (
+      map (part: if builtins.isList part then "_" else part) (builtins.split "[^A-Za-z0-9+._?=-]" hash)
+    );
+
   materialize =
-    artifact:
+    entry:
     derivation {
-      name = "zig-package-${lock.storeName artifact.zigHash}";
+      name = "zig-package-${storeName entry.zigHash}";
       inherit system;
       builder = cli;
       args = [
         "materialize"
         zig
-        (fetch artifact)
-        artifact.zigHash
+        (fetch entry)
+        entry.zigHash
       ];
       preferLocalBuild = true;
     };
 
   packages = builtins.listToAttrs (
-    map (artifact: {
-      name = artifact.zigHash;
-      value = materialize artifact;
-    }) lock.artifacts
+    map (entry: {
+      name = entry.zigHash;
+      value = materialize entry;
+    }) entries
   );
 
   farm = derivation {

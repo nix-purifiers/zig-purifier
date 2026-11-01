@@ -35,15 +35,29 @@
   perSystem =
     { config, pkgs, ... }:
     let
-      # A toolchain for each zig version the package set provides.
+      # A toolchain for each zig version the package set provides with a
+      # ZLS of the same version.
       zigAttrs = builtins.filter (name: builtins.match "zig_[0-9]+_[0-9]+" name != null) (
         builtins.attrNames pkgs
       );
+      zlsOf = name: "zls" + lib.removePrefix "zig" name;
       toolchains = lib.listToAttrs (
-        map (name: {
-          name = "toolchain-${name}";
-          value = config.packages.toolchain.override { zig = pkgs.${name}; };
-        }) (builtins.filter (name: (builtins.tryEval pkgs.${name}.version).success) zigAttrs)
+        map
+          (name: {
+            name = "toolchain-${name}";
+            value = config.packages.toolchain.override {
+              zig = pkgs.${name};
+              zls = pkgs.${zlsOf name};
+            };
+          })
+          (
+            builtins.filter (
+              name:
+              pkgs ? ${zlsOf name}
+              && (builtins.tryEval pkgs.${name}.version).success
+              && (builtins.tryEval pkgs.${zlsOf name}.version).success
+            ) zigAttrs
+          )
       );
     in
     {
@@ -82,6 +96,7 @@
             checks = import ../../../tests {
               inherit pkgs;
               overlay = self.overlays.default;
+              inherit (self.lib.zig-purifier) buildZigProject readLock;
             };
             treefmt.programs.nixfmt.enable = true;
             treefmt.programs.ruff-format.enable = true;

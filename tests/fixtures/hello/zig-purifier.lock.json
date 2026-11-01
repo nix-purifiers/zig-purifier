@@ -1,13 +1,8 @@
 {
-  "version": 1,
+  "version": 2,
   "zigVersion": "0.15.2",
   "name": "hello",
   "packageVersion": "0.0.1",
-  "paths": [
-    "build.zig",
-    "build.zig.zon",
-    "src"
-  ],
   "buildFlags": [
     "--release=safe",
     "-Dcpu=baseline"
@@ -50,5 +45,6 @@
       "hash": "sha256-fDWd7EQYZuAlBlrpynBuznK89OiiX74xcZsekv84lkg=",
       "zigHash": "clap-0.11.0-oBajB-HnAQDPCKYzwF7rO3qDFwRcD39Q0DALlTSz5H7e"
     }
-  ]
+  ],
+  "contentHash": "b651c4752d9c599e6186ca04cca75551a155fc1830ffca00926c74e0b8f674bf"
 }

@@ -15,7 +15,10 @@
   libDir ? ./.,
 }:
 let
-  lock = import (libDir + "/lock.nix") { inherit lockFile; };
+  lock = import (libDir + "/read-lock.nix") {
+    src = null;
+    inherit lockFile;
+  };
   fetch = import (libDir + "/library.nix") { inherit libDir; };
 
   # A store path as a string with the store object in its context, so the
@@ -31,8 +34,10 @@ let
     else
       builtins.storePath (builtins.elemAt parts 0) + (if rest == null then "" else rest);
 in
+assert lock.problems == [ ] || throw (builtins.concatStringsSep "\n" lock.problems);
 (import (libDir + "/packages.nix") {
-  inherit lock fetch;
+  inherit (lock) entries;
+  inherit fetch;
   cli = inStore "zig-purifier command" cli;
   zig = inStore "zig executable" zig;
   system = builtins.currentSystem;

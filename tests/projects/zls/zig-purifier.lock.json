@@ -1,11 +1,8 @@
 {
-  "version": 1,
+  "version": 2,
   "zigVersion": "0.15.2",
   "name": "zls",
   "packageVersion": "0.15.1",
-  "paths": [
-    ""
-  ],
   "buildFlags": [
     "--release=safe",
     "-Dcpu=baseline"
@@ -57,5 +54,6 @@
       "hash": "sha256-3SCilRFE+cdVwoKFNULk9BfmDGZzgX0EQGcZJES/2r4=",
       "zigHash": "lsp_kit-0.1.0-bi_PL04yCgAxLsF0hH2a5sZKT84MGQaKXouw2jvCE8Nl"
     }
-  ]
+  ],
+  "contentHash": "a6d998a0998ae869ab9e43b21fc28e4c1870ae1a60881785a9e009591f9f6ee1"
 }

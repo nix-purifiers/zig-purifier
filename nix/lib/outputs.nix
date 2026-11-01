@@ -23,7 +23,11 @@
   libDir ? ./.,
 }:
 let
-  lock = import (libDir + "/lock.nix") { inherit lockFile; };
+  lock = import (libDir + "/read-lock.nix") {
+    src = null;
+    inherit lockFile;
+  };
+  buildFlags = (builtins.head (builtins.attrValues lock.outputs)).buildFlags;
   fetch = import (libDir + "/library.nix") { inherit libDir; };
   inStore =
     what: path:
@@ -40,7 +44,8 @@ let
   system = builtins.currentSystem;
   inherit
     (import (libDir + "/packages.nix") {
-      inherit lock fetch system;
+      inherit (lock) entries;
+      inherit fetch system;
       cli = cli';
       zig = zig';
     })
@@ -56,9 +61,11 @@ let
         ".zig-cache"
         "zig-out"
         "zig-pkg"
+        ".zig-purifier"
       ]);
   };
 in
+assert lock.problems == [ ] || throw (builtins.concatStringsSep "\n" lock.problems);
 derivation {
   name = "zig-purifier-outputs";
   inherit system;
@@ -69,6 +76,6 @@ derivation {
     "${farm}"
     "${src}"
     projectDir
-    (builtins.toJSON lock.buildFlags)
+    (builtins.toJSON buildFlags)
   ];
 }

@@ -3,96 +3,69 @@
 # buildZigProject: builds a Zig package and its locked dependencies in the
 # Nix sandbox, from the package's zig-purifier.lock.json alone.
 #
-#   (buildZigProject { src = ./.; }).package
+#   (lib.zig-purifier.buildZigProject { inherit pkgs; src = ./.; }).packages.hello
 #
 # The result is an attribute set:
 #
-#   package      the install step: `zig build install --prefix $out`
-#   files        each file the install step installs, by its path under
-#                the prefix, as `files."bin/hello"`
-#   executables  each file under bin/, by its name
-#   steps        each other step of build.zig, by its name, as a build that
-#                runs it and succeeds when it does (`steps.test`)
-#   release      the release archive, and in `zig-hash` the hash that
-#                `zig fetch` reports for it
-#   packages     the dependencies, each unpacked as zig unpacks it, by hash
-#   cache        those packages linked by hash: the `p` of a zig cache
-#   lock         the lockfile
+#   packages.<name>  the install step, `zig build install --prefix $out`,
+#                    under the name of the package in build.zig.zon
+#   tests            the `test` step of build.zig (or `checkSteps`), run
+#   release          the release archive `zig-purifier publish` uploads,
+#                    and in `zig-hash` the hash `zig fetch` gives it
+#   fetches          the purifier library entries of the lock
+#   files            each file the install step installs, by its path under
+#                    the prefix, as `files."bin/hello"`
+#   executables      each file under bin/, by its name
+#   steps            each step of build.zig but install and uninstall, by
+#                    its name, as a build that runs it
+#   dependencies     the dependencies, each unpacked as zig unpacks it, by
+#                    its zig hash
+#   lock             the lock in memory (nix/lib/read-lock.nix)
 #
 # The lock run records the steps and the installed files, so every
 # attribute is known when Nix evaluates the build, without building it.
 {
   lib,
-  stdenv,
-  pkgs,
-  zig-purifier,
-  # The purifier library (github:nix-purifiers/purifier), which fetches
-  # the download entries of the lockfile.
+  # The purifier library (github:nix-purifiers/purifier), which checks the
+  # lock and fetches its download entries.
   purifier,
 }:
 {
+  pkgs,
   # The source: the package, and every package its path dependencies name.
   src,
   # The directory of the package's build.zig.zon, relative to `src`.
   projectDir ? ".",
-  # The lockfile. By default, zig-purifier.lock.json beside build.zig.zon;
-  # a lockfile kept apart from a source fetched from elsewhere goes here.
+  # The lockfile. By default, zig-purifier.lock.json beside build.zig.zon.
+  # A lockfile outside `src` takes the place of any lockfile in it.
   lockFile ? null,
+  # Fetchers for the purifier library's fetchEntry, such as a fetchurl
+  # with credentials or a company mirror. Each takes the arguments the
+  # nixpkgs fetcher of the same name takes.
+  fetchers ? { },
   # The zig. By default, the nixpkgs zig of the version the lock was made
   # with.
   zig ? null,
   # The flags of every `zig build`. By default, the flags the lock run
   # used, which also decided the installed files the lock records.
   buildFlags ? null,
-  # Whether the package build also runs `checkSteps`.
-  doCheck ? false,
+  # The steps `tests` runs.
   checkSteps ? [ "test" ],
-  # Replace the fetchers of the locked downloads, for credentials or more
-  # mirrors. The purifier library calls them with the arguments the
-  # nixpkgs fetchers of the same names take.
-  fetchurl ? pkgs.fetchurl,
-  fetchgit ? pkgs.fetchgit,
 }:
 let
-  projectSrc = if projectDir == "." then "${src}" else "${src}/${projectDir}";
-  lockFile' = if lockFile != null then lockFile else "${projectSrc}/zig-purifier.lock.json";
-  lock = import ./lock.nix { lockFile = lockFile'; };
+  inherit (pkgs) stdenv;
+  inherit (stdenv.buildPlatform) system;
 
-  # A lock made from other build.zig.zon files would build other
-  # dependencies than the source names. A source that is a path in the
-  # repository is checked here; other sources would need their files read
-  # through import from derivation.
-  freshness =
-    if !(builtins.isPath src) || lock.computeDefinitionHash projectSrc == lock.definitionHash then
-      true
-    else
-      throw "zig-purifier: the build.zig.zon files under ${toString projectSrc} changed since ${toString lockFile'} was written. Run `zig-purifier lock` there.";
+  lock = import ./read-lock.nix { inherit src projectDir lockFile; };
+  checked = purifier.checkLock lock;
+  name = builtins.head (builtins.attrNames checked.outputs);
+  output = checked.outputs.${name};
+  entries = purifier.entriesFor system checked;
+  lockName = toString (
+    if lockFile != null then lockFile else "${src}/${projectDir}/zig-purifier.lock.json"
+  );
 
-  # Path dependencies must lie inside the source, or the build cannot see
-  # them.
-  # Whether a path relative to the package climbs above `src`.
-  escapes =
-    p:
-    let
-      parts = builtins.filter (s: s != "" && s != ".") (lib.splitString "/" "${projectDir}/${p}");
-      depth = builtins.foldl' (
-        d: s:
-        if d < 0 then
-          d
-        else if s == ".." then
-          d - 1
-        else
-          d + 1
-      ) 0 parts;
-    in
-    depth < 0;
-  inside = builtins.all (
-    p:
-    !(escapes p)
-    || throw "zig-purifier: the path dependency ${p} of ${projectDir} lies outside `src`. Make `src` a directory that holds it, and set `projectDir`."
-  ) lock.localPackages;
-
-  majorMinor = lib.versions.majorMinor lock.zigVersion;
+  majorMinor = lib.versions.majorMinor output.zigVersion;
   zigAttr = "zig_${lib.replaceStrings [ "." ] [ "_" ] majorMinor}";
   zig' =
     if zig != null then
@@ -102,19 +75,23 @@ let
     else if lib.versions.majorMinor pkgs.zig.version == majorMinor then
       pkgs.zig
     else
-      throw "zig-purifier: the lock was made with zig ${lock.zigVersion}, and this package set has no ${zigAttr}. Pass `zig`.";
+      throw "zig-purifier: the lock was made with zig ${output.zigVersion}, and this package set has no ${zigAttr}. Pass `zig`.";
 
-  flags = if buildFlags != null then buildFlags else lock.buildFlags;
+  flags = if buildFlags != null then buildFlags else output.buildFlags;
 
-  cli = "${zig-purifier.cli}/bin/zig-purifier";
+  cli = "${pkgs.callPackage ../../pkgs/cli { }}/bin/zig-purifier";
   zigBin = "${zig'}/bin/zig";
 
-  fetch = purifier.fetchEntry { inherit pkgs fetchurl fetchgit; };
+  fetch = purifier.fetchEntry ({ inherit pkgs; } // fetchers);
   inherit
     (import ./packages.nix {
-      inherit lock fetch cli;
+      inherit
+        entries
+        fetch
+        cli
+        system
+        ;
       zig = zigBin;
-      inherit (stdenv.buildPlatform) system;
     })
     packages
     farm
@@ -130,6 +107,10 @@ let
     cp -r ${src} $TMPDIR/source
     chmod -R u+w $TMPDIR/source
     cd $TMPDIR/source/${projectDir}
+    ${lib.optionalString (lockFile != null) ''
+      # A lockfile given outside `src` replaces any copy in it.
+      cp ${lockFile} zig-purifier.lock.json
+    ''}
     mkdir -p $ZIG_GLOBAL_CACHE_DIR/p zig-pkg
     for package in ${farm}/*; do
       name=$(basename "$package")
@@ -159,81 +140,65 @@ let
     ''
       if ! ${command} 2> >(tee $TMPDIR/zig-errors >&2); then
         if grep -qiE 'fetch|connection|name ?server|unable to download|hash mismatch' $TMPDIR/zig-errors; then
-          echo "zig-purifier: zig tried to fetch a package that ${toString lockFile'} does not hold. Run \`zig-purifier relock\` where build.zig.zon is." >&2
+          echo "zig-purifier: zig tried to fetch a package that ${lockName} does not hold. Run \`zig-purifier lock\` where build.zig.zon is." >&2
         fi
         exit 1
       fi
     '';
 
-  # The path dependencies come first: the freshness check reads their
-  # build.zig.zon files.
-  checked = builtins.seq inside (builtins.seq freshness true);
+  package = stdenv.mkDerivation {
+    pname = name;
+    inherit (output) version;
+    nativeBuildInputs = [ zig' ];
+    dontUnpack = true;
+    dontConfigure = true;
+    buildPhase = ''
+      runHook preBuild
+      ${setup}
+      ${zigBuild [ "install" ] "--prefix $out"}
+      runHook postBuild
+    '';
+    dontInstall = true;
+  };
 
-  package =
-    assert checked;
+  # A build that runs `steps` of build.zig and succeeds when they do.
+  run =
+    runName: steps:
     stdenv.mkDerivation {
-      pname = lock.name;
-      version = lock.packageVersion;
+      name = runName;
       nativeBuildInputs = [ zig' ];
       dontUnpack = true;
       dontConfigure = true;
       buildPhase = ''
         runHook preBuild
         ${setup}
-        ${zigBuild [ "install" ] "--prefix $out"}
-        runHook postBuild
-      '';
-      inherit doCheck;
-      checkPhase = ''
-        runHook preCheck
-        ${lib.concatMapStringsSep "\n" (step: zigBuild [ step ] "") checkSteps}
-        runHook postCheck
-      '';
-      dontInstall = true;
-      passthru = {
-        inherit lock;
-      };
-    };
-
-  step =
-    name:
-    assert checked;
-    stdenv.mkDerivation {
-      name = "${lock.name}-step-${name}";
-      nativeBuildInputs = [ zig' ];
-      dontUnpack = true;
-      dontConfigure = true;
-      buildPhase = ''
-        runHook preBuild
-        ${setup}
-        ${zigBuild [ name ] ""}
+        ${lib.concatMapStringsSep "\n" (step: zigBuild [ step ] "") steps}
         runHook postBuild
       '';
       installPhase = "touch $out";
     };
 
   release = derivation {
-    name = "${lock.name}-${lock.packageVersion}-release";
-    inherit (stdenv.buildPlatform) system;
+    name = "${name}-${output.version}-release";
+    inherit system;
     builder = cli;
     args = [
       "release"
       zigBin
-      projectSrc
+      (if projectDir == "." then "${src}" else "${src}/${projectDir}")
     ];
   };
 
-  binaries = builtins.filter (f: lib.hasPrefix "bin/" f) lock.installed;
+  binaries = builtins.filter (f: lib.hasPrefix "bin/" f) output.installed;
 in
 {
-  inherit
-    package
-    packages
-    release
-    lock
-    ;
-  cache = farm;
-  files = lib.genAttrs lock.installed (f: "${package}/${f}");
+  packages.${name} = package;
+  tests = run "${name}-tests" (builtins.filter (s: builtins.elem s output.steps) checkSteps);
+  inherit release;
+  lock = checked;
+  fetches = checked.entries;
+  dependencies = packages;
+  files = lib.genAttrs output.installed (f: "${package}/${f}");
   executables = lib.listToAttrs (
     map (f: {
       name = lib.removePrefix "bin/" f;
@@ -243,5 +208,5 @@ in
   steps = lib.genAttrs (lib.subtractLists [
     "install"
     "uninstall"
-  ] lock.steps) step;
+  ] output.steps) (step: run "${name}-step-${step}" [ step ]);
 }

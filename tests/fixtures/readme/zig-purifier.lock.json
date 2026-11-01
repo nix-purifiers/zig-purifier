@@ -1,12 +1,8 @@
 {
-  "version": 1,
+  "version": 2,
   "zigVersion": "0.17.0",
   "name": "readme",
   "packageVersion": "0.0.1",
-  "paths": [
-    "build.zig",
-    "build.zig.zon"
-  ],
   "buildFlags": [
     "--release=safe"
   ],
@@ -30,5 +26,6 @@
       "hash": "sha256-fDWd7EQYZuAlBlrpynBuznK89OiiX74xcZsekv84lkg=",
       "zigHash": "clap-0.11.0-oBajB-HnAQDPCKYzwF7rO3qDFwRcD39Q0DALlTSz5H7e"
     }
-  ]
+  ],
+  "contentHash": "ec552b4adcd58951b0a8a82834fc3ecffb56fe2fcc99f9e06ce82912ddb17244"
 }

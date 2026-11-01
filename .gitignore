@@ -1,5 +1,7 @@
 /result
 /result-*
 .zig-cache/
+.zig-purifier/
 zig-out/
+zig-pkg/
 __pycache__/

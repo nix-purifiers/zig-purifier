@@ -6,11 +6,18 @@ Commands for people:
   zig-purifier lock      lock the package in the current directory, when
                          its build.zig.zon files changed since the last lock
   zig-purifier relock    lock it again regardless
-  zig-purifier sync      link the locked packages where zig and ZLS look
-                         for them, so builds and the editor work offline
-  zig-purifier zig ...   sync, then run zig
-  zig-purifier package   write the release archive to zig-out/release and
-                         print the hash that `zig fetch` reports for it
+  zig-purifier update [NAME...]
+                         fetch the named dependencies of build.zig.zon, or
+                         all of them, again with `zig fetch --save`, a git
+                         dependency at the newest commit of its ref, and
+                         lock the result
+  zig-purifier prefetch  realize the locked packages and the toolchain, and
+                         link the packages where zig and ZLS look for them,
+                         so builds and the editor work offline
+  zig-purifier zig ...   run zig; `zig build` prefetches first
+  zig-purifier publish TAG [--repo OWNER/REPO] [--dry-run]
+                         upload the release archive Nix builds to a GitHub
+                         release, and print its URL and hash
 
 Commands the Nix library runs as builders:
 
@@ -34,7 +41,26 @@ import urllib.request
 import zon
 
 LOCK_FILE = "zig-purifier.lock.json"
-LOCK_VERSION = 1
+# A lockfile kept outside the project, from `--lockfile PATH`, or for the
+# zig wrapper, whose arguments are zig's, from ZIG_PURIFIER_LOCKFILE.
+LOCK_OVERRIDE = os.environ.get("ZIG_PURIFIER_LOCKFILE") or None
+
+
+def lock_path(project_dir):
+    """The lockfile of a project: the one `--lockfile` names, or the one
+    beside its build.zig.zon."""
+    if LOCK_OVERRIDE:
+        return os.path.abspath(LOCK_OVERRIDE)
+    return os.path.join(project_dir, LOCK_FILE)
+
+
+def state_dir(project_dir):
+    """`.zig-purifier` beside the lockfile, which holds the GC roots of
+    prefetch and the release that publish uploads."""
+    return os.path.join(os.path.dirname(lock_path(project_dir)), ".zig-purifier")
+
+
+LOCK_VERSION = 2
 # The Nix library of this command, set by the package that installs it.
 NIX_LIB = os.environ.get("ZIG_PURIFIER_NIX_LIB", "")
 
@@ -477,9 +503,9 @@ class Locker:
             raise Failure(
                 "ZIG_PURIFIER_CLI is not set; run zig-purifier as the package installs it"
             )
-        lock_path = os.path.join(self.work, "partial.lock.json")
-        with open(lock_path, "w") as f:
-            json.dump(partial_lock, f)
+        partial_path = os.path.join(self.work, "partial.lock.json")
+        with open(partial_path, "w") as f:
+            json.dump(dict(partial_lock, contentHash=content_hash(partial_lock)), f)
         top = self.source_top()
         out = subprocess.run(
             [
@@ -487,7 +513,7 @@ class Locker:
                 os.path.join(NIX_LIB, "outputs.nix"),
                 "--argstr",
                 "lockFile",
-                lock_path,
+                partial_path,
                 "--argstr",
                 "srcPath",
                 top,
@@ -544,7 +570,6 @@ class Locker:
             "zigVersion": zig_version(self.zig),
             "name": str(manifest.get("name", "")),
             "packageVersion": str(manifest.get("version", "")),
-            "paths": list(manifest.get("paths") or [""]),
             "buildFlags": build_flags,
             "steps": [],
             "installed": [],
@@ -570,7 +595,9 @@ def build_outputs(zig, farm, src, project_dir, build_flags, work):
         src,
         tree,
         symlinks=True,
-        ignore=shutil.ignore_patterns(".git", ".zig-cache", "zig-out", "zig-pkg"),
+        ignore=shutil.ignore_patterns(
+            ".git", ".zig-cache", "zig-out", "zig-pkg", ".zig-purifier"
+        ),
     )
     for directory, _dirs, _names in os.walk(tree):
         os.chmod(directory, 0o755)
@@ -596,8 +623,24 @@ def build_outputs(zig, farm, src, project_dir, build_flags, work):
     return {"steps": sorted(steps), "installed": sorted(installed)}
 
 
+def content_hash(lock):
+    """The hash a lockfile records of its own content.
+
+    It is the sha256 of the lockfile without `contentHash`, written as
+    Nix's builtins.toJSON writes it: keys sorted, no spaces. nix/lib/lock.nix
+    computes the same hash, so an edit to the lockfile fails in the command
+    and at Nix evaluation alike.
+    """
+    content = {k: v for k, v in lock.items() if k != "contentHash"}
+    text = json.dumps(
+        content, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    )
+    return hashlib.sha256(text.encode()).hexdigest()
+
+
 def write_lock(project_dir, lock):
-    path = os.path.join(project_dir, LOCK_FILE)
+    lock = dict(lock, contentHash=content_hash(lock))
+    path = lock_path(project_dir)
     with open(path, "w", encoding="utf-8") as f:
         json.dump(lock, f, indent=2)
         f.write("\n")
@@ -605,7 +648,7 @@ def write_lock(project_dir, lock):
 
 
 def read_lock(project_dir):
-    path = os.path.join(project_dir, LOCK_FILE)
+    path = lock_path(project_dir)
     if not os.path.exists(path):
         return None
     with open(path, encoding="utf-8") as f:
@@ -618,6 +661,16 @@ def read_lock(project_dir):
     if not isinstance(lock, dict) or not isinstance(lock.get("artifacts"), list):
         raise Failure(
             f"{path} is not a zig-purifier lockfile. Run `zig-purifier relock` to write it again."
+        )
+    if lock.get("version") != LOCK_VERSION:
+        raise Failure(
+            f"{path} has lock format version {lock.get('version')}, and this zig-purifier "
+            f"reads version {LOCK_VERSION}. Run `zig-purifier relock` to write it again."
+        )
+    if lock.get("contentHash") != content_hash(lock):
+        raise Failure(
+            f"{path} was edited after `zig-purifier lock` wrote it. "
+            "Run `zig-purifier relock` to write it again."
         )
     return lock
 
@@ -649,13 +702,24 @@ def command_lock(args, force):
     project_dir = find_project(args[0] if args else ".")
     if project_dir is None:
         raise Failure("no build.zig.zon here or in a parent directory")
-    current = read_lock(project_dir)
+    try:
+        current = read_lock(project_dir)
+        recorded_flags = (current or {}).get("buildFlags")
+    except Failure:
+        # A lockfile the command cannot use is what a relock replaces; its
+        # build flags still count when it can be read at all.
+        current = None
+        try:
+            with open(lock_path(project_dir), encoding="utf-8") as f:
+                recorded_flags = json.load(f).get("buildFlags")
+        except (OSError, ValueError, AttributeError):
+            recorded_flags = None
     if flags is None:
-        flags = (current or {}).get("buildFlags", DEFAULT_BUILD_FLAGS)
+        flags = recorded_flags or DEFAULT_BUILD_FLAGS
     elif current is not None and current.get("buildFlags") != flags:
         force = True
     if not force and current is not None and lock_is_fresh(project_dir, current):
-        print(f"{os.path.join(project_dir, LOCK_FILE)} is up to date")
+        print(f"{lock_path(project_dir)} is up to date")
         return
     locker = Locker(project_dir, zig_command())
     try:
@@ -666,16 +730,60 @@ def command_lock(args, force):
     print(f"wrote {path}: {len(lock['artifacts'])} downloads")
 
 
+def update_url(url):
+    """The URL `zig fetch --save` resolves again for a dependency's URL.
+
+    `zig fetch --save` records a git dependency fetched at a ref as
+    `git+https://host/repo?ref=REF#COMMIT`. Fetching `git+https://host/repo#REF`
+    resolves REF again; a git URL without a ref resolves the default branch.
+    An archive URL is fetched as it stands, which gives a new hash when what
+    the server holds there changed.
+    """
+    if not url.startswith("git+"):
+        return url
+    base = url.partition("#")[0]
+    parsed = urllib.parse.urlparse(base)
+    ref = urllib.parse.parse_qs(parsed.query).get("ref", [None])[0]
+    base = urllib.parse.urlunparse(parsed._replace(query=""))
+    return f"{base}#{ref}" if ref else base
+
+
+def command_update(args):
+    """`update [NAME...]`: fetches the dependencies of the package's
+    build.zig.zon again, then locks. Dependencies of dependencies are pinned
+    by the build.zig.zon of the package that names them, so only the
+    package's own dependencies move."""
+    project_dir = find_project(".")
+    if project_dir is None:
+        raise Failure("no build.zig.zon here or in a parent directory")
+    deps = {
+        name: dep["url"]
+        for name, dep in dependencies(read_manifest(project_dir)).items()
+        if isinstance(dep, dict) and "url" in dep
+    }
+    unknown = [name for name in args if name not in deps]
+    if unknown:
+        raise Failure(
+            f"build.zig.zon has no dependency fetched from a URL named {', '.join(unknown)}"
+        )
+    zig = zig_command()
+    for name in args or sorted(deps):
+        run([zig, "fetch", f"--save={name}", update_url(deps[name])], cwd=project_dir)
+        url = dependencies(read_manifest(project_dir))[name]["url"]
+        print(f"{name}: {url}" if url != deps[name] else f"{name}: unchanged")
+    command_lock([project_dir], force=False)
+
+
 # ---------------------------------------------------------------------------
 # Interactive mode.
 
 
 def realize(project_dir, zig):
     """Builds the package cache of the lockfile; returns its path."""
-    state = os.path.join(project_dir, ".zig-cache", "zig-purifier")
+    state = state_dir(project_dir)
     os.makedirs(state, exist_ok=True)
     packages = os.path.join(state, "packages")
-    with open(os.path.join(project_dir, LOCK_FILE), "rb") as f:
+    with open(lock_path(project_dir), "rb") as f:
         lock_hash = hashlib.sha256(f.read()).hexdigest()
     marker = os.path.join(state, "lock.sha256")
     try:
@@ -697,7 +805,7 @@ def realize(project_dir, zig):
                 os.path.join(NIX_LIB, "realize.nix"),
                 "--argstr",
                 "lockFile",
-                os.path.join(project_dir, LOCK_FILE),
+                lock_path(project_dir),
                 "--argstr",
                 "cli",
                 cli,
@@ -727,49 +835,71 @@ def global_cache_dir(zig):
     return env["global_cache_dir"]
 
 
-def sync(project_dir, zig, quiet=False):
-    """Links the locked packages of a project where zig and ZLS look.
+def stale_message(project_dir):
+    return (
+        f"the build.zig.zon files of {project_dir} changed since {lock_path(project_dir)} was "
+        "written, so the build needs downloads the lock does not hold. "
+        "Run `zig-purifier lock`."
+    )
 
-    Zig up to 0.15 looks for a package at `p/<hash>` in its global cache,
-    and zig 0.16 and later at `zig-pkg/<hash>` in the project. A package
-    is named by the hash of its contents, so a link there is the package
-    whatever else uses the cache, and `zig build`, `zig fetch` and the
-    editor's language server all find it there without the network.
-    Returns whether the lock was current.
+
+def prefetch(project_dir, zig, quiet=False):
+    """Realizes what working on a project needs, and links it where zig
+    and ZLS look.
+
+    It builds every locked package into the store, with a GC root at
+    `.zig-purifier/packages` beside the lockfile, and the toolchain the command runs
+    from (zig and the ZLS of the same version), with a GC root at
+    `.zig-purifier/toolchain`. Zig up to 0.15 looks for a
+    package at `p/<hash>` in its global cache, and zig 0.16 and later at
+    `zig-pkg/<hash>` in the project. A package is named by the hash of its
+    contents, so a link there is the package whatever else uses the cache,
+    and `zig build`, `zig fetch` and ZLS find it without the network.
     """
     lock = read_lock(project_dir)
     if lock is None:
-        return False
-    if not lock_is_fresh(project_dir, lock):
-        warn(
-            f"the build.zig.zon files of {project_dir} changed since the lock. "
-            "zig fetches the usual way until `zig-purifier lock` renews it."
+        raise Failure(
+            f"no {lock_path(project_dir)} for {project_dir}. Run `zig-purifier lock`."
         )
-        return False
+    if not lock_is_fresh(project_dir, lock):
+        raise Failure(stale_message(project_dir))
     packages = realize(project_dir, zig)
+    toolchain = os.environ.get("ZIG_PURIFIER_TOOLCHAIN")
+    if toolchain:
+        root = os.path.join(state_dir(project_dir), "toolchain")
+        run(["nix-store", "--realise", toolchain, "--add-root", root])
     if project_packages(zig):
         use_packages(packages, project_dir, None, in_project=True, in_global=False)
     else:
         use_packages(packages, project_dir, global_cache_dir(zig), in_project=False)
     if not quiet:
-        print(f"linked {len(lock['artifacts'])} locked packages for {project_dir}")
-    return True
+        print(f"prefetched {len(lock['artifacts'])} locked packages for {project_dir}")
 
 
-def command_sync(args):
+def command_prefetch(args):
     project_dir = find_project(args[0] if args else ".")
     if project_dir is None:
         raise Failure("no build.zig.zon here or in a parent directory")
-    if read_lock(project_dir) is None:
-        raise Failure(f"no {LOCK_FILE} in {project_dir}; run `zig-purifier lock` first")
-    sync(project_dir, zig_command())
+    prefetch(project_dir, zig_command())
 
 
 def command_zig(args):
+    """Runs zig. In a project with a lockfile, `zig build` runs with the
+    locked packages, and stops when the lock is stale, because the build
+    would need downloads the lock does not hold. Every other zig command,
+    such as `zig fetch --save`, which adds a dependency, runs as it is."""
     zig = zig_command()
     project_dir = find_project(".")
-    if project_dir is not None and os.environ.get("ZIG_PURIFIER") != "0":
-        sync(project_dir, zig, quiet=True)
+    if (
+        project_dir is not None
+        and os.environ.get("ZIG_PURIFIER") != "0"
+        and args[:1] == ["build"]
+    ):
+        lock = read_lock(project_dir)
+        if lock is not None:
+            if not lock_is_fresh(project_dir, lock):
+                raise Failure(stale_message(project_dir))
+            prefetch(project_dir, zig, quiet=True)
     os.execvp(zig, [zig] + args)
 
 
@@ -789,7 +919,10 @@ def package_files(project_dir, paths):
                 dirs[:] = [
                     d
                     for d in dirs
-                    if not (root == project_dir and d in (".zig-cache", "zig-out"))
+                    if not (
+                        root == project_dir
+                        and d in (".zig-cache", "zig-out", "zig-pkg", ".zig-purifier")
+                    )
                 ]
                 files.extend(
                     os.path.relpath(os.path.join(root, n), project_dir) for n in names
@@ -845,14 +978,84 @@ def write_release(zig, project_dir, out_dir):
     return archive, archive_hash
 
 
-def command_package(args):
-    project_dir = find_project(args[0] if args else ".")
+def build_release(project_dir, zig):
+    """Builds the release archive with Nix; returns the archive and its hash."""
+    cli = os.environ.get("ZIG_PURIFIER_CLI")
+    if not cli:
+        raise Failure(
+            "ZIG_PURIFIER_CLI is not set; run zig-purifier as the package installs it"
+        )
+    out = run(
+        [
+            "nix-build",
+            os.path.join(NIX_LIB, "release.nix"),
+            "--argstr",
+            "srcPath",
+            project_dir,
+            "--argstr",
+            "cli",
+            cli,
+            "--argstr",
+            "zig",
+            os.path.realpath(shutil.which(zig) or zig),
+            "--out-link",
+            os.path.join(state_dir(project_dir), "release"),
+        ]
+    ).stdout.strip()
+    archives = [n for n in os.listdir(out) if n.endswith(".tar.gz")]
+    with open(os.path.join(out, "zig-hash")) as f:
+        return os.path.join(out, archives[0]), f.read().strip()
+
+
+def command_publish(args):
+    """`publish TAG [--repo OWNER/REPO] [--dry-run]`.
+
+    Zig has no package registry: a package is published as an archive at
+    a URL, which others name in their build.zig.zon with the hash zig
+    gives the archive. This uploads the release archive that Nix built to
+    the GitHub release TAG, and prints the URL and the hash to use.
+    """
+    dry_run = "--dry-run" in args
+    args = [a for a in args if a != "--dry-run"]
+    repo = None
+    if "--repo" in args:
+        i = args.index("--repo")
+        repo = args[i + 1]
+        args = args[:i] + args[i + 2 :]
+    if len(args) != 1:
+        raise Failure("usage: zig-purifier publish TAG [--repo OWNER/REPO] [--dry-run]")
+    tag = args[0]
+    project_dir = find_project(".")
     if project_dir is None:
         raise Failure("no build.zig.zon here or in a parent directory")
-    out_dir = os.path.join(project_dir, "zig-out", "release")
-    archive, zig_hash = write_release(zig_command(), project_dir, out_dir)
-    print(archive)
-    print(zig_hash)
+    archive, archive_hash = build_release(project_dir, zig_command())
+    if repo is None:
+        repo = run(
+            ["gh", "repo", "view", "--json", "nameWithOwner", "-q", ".nameWithOwner"],
+            cwd=project_dir,
+        ).stdout.strip()
+    url = (
+        f"https://github.com/{repo}/releases/download/{tag}/{os.path.basename(archive)}"
+    )
+    command = [
+        "gh",
+        "release",
+        "create",
+        tag,
+        archive,
+        "--repo",
+        repo,
+        "--title",
+        tag,
+        "--notes",
+        f"zig fetch hash: {archive_hash}",
+    ]
+    if dry_run:
+        print("would run: " + " ".join(command))
+    else:
+        run(command)
+    print(f'.url = "{url}",')
+    print(f'.hash = "{archive_hash}",')
 
 
 def command_outputs(args):
@@ -898,18 +1101,28 @@ def main(argv):
     if not argv or argv[0] in ("-h", "--help", "help"):
         print(__doc__.strip())
         return 0
+    global LOCK_OVERRIDE
     command, args = argv[0], argv[1:]
+    if command != "zig" and "--lockfile" in args:
+        i = args.index("--lockfile")
+        if i + 1 >= len(args):
+            warn("--lockfile needs a path")
+            return 2
+        LOCK_OVERRIDE = args[i + 1]
+        args = args[:i] + args[i + 2 :]
     try:
         if command == "lock":
             command_lock(args, force=False)
         elif command == "relock":
             command_lock(args, force=True)
+        elif command == "update":
+            command_update(args)
         elif command == "zig":
             command_zig(args)
-        elif command == "sync":
-            command_sync(args)
-        elif command == "package":
-            command_package(args)
+        elif command == "prefetch":
+            command_prefetch(args)
+        elif command == "publish":
+            command_publish(args)
         elif command == "materialize":
             command_materialize(args)
         elif command == "link-farm":

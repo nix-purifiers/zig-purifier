@@ -231,5 +231,52 @@ class LockTest(unittest.TestCase):
         self.assertEqual(first_hash, second_hash)
 
 
+class LockFileTest(unittest.TestCase):
+    def setUp(self):
+        self.dir = tempfile.mkdtemp()
+        self.lock = {
+            "version": zig_purifier.LOCK_VERSION,
+            "artifacts": [{"path": "a", "hash": "h"}],
+        }
+
+    def tearDown(self):
+        shutil.rmtree(self.dir, ignore_errors=True)
+
+    def path(self):
+        return os.path.join(self.dir, zig_purifier.LOCK_FILE)
+
+    def test_round_trip(self):
+        zig_purifier.write_lock(self.dir, self.lock)
+        read = zig_purifier.read_lock(self.dir)
+        self.assertEqual(read["artifacts"], self.lock["artifacts"])
+        self.assertEqual(read["contentHash"], zig_purifier.content_hash(self.lock))
+
+    def test_edited_hash_names_relock(self):
+        zig_purifier.write_lock(self.dir, self.lock)
+        with open(self.path()) as f:
+            text = f.read().replace('"hash": "h"', '"hash": "x"')
+        with open(self.path(), "w") as f:
+            f.write(text)
+        with self.assertRaisesRegex(
+            zig_purifier.Failure, "edited after .*zig-purifier relock"
+        ):
+            zig_purifier.read_lock(self.dir)
+
+    def test_old_version_names_relock(self):
+        zig_purifier.write_lock(self.dir, dict(self.lock, version=1))
+        with self.assertRaisesRegex(
+            zig_purifier.Failure, "version 1.*zig-purifier relock"
+        ):
+            zig_purifier.read_lock(self.dir)
+
+    def test_invalid_json_names_relock(self):
+        with open(self.path(), "w") as f:
+            f.write('{ "version": 2, ')
+        with self.assertRaisesRegex(
+            zig_purifier.Failure, "not valid JSON.*zig-purifier relock"
+        ):
+            zig_purifier.read_lock(self.dir)
+
+
 if __name__ == "__main__":
     unittest.main()

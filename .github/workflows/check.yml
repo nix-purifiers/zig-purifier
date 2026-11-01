@@ -1,14 +1,23 @@
 # SPDX-License-Identifier: MIT
 #
-# Checks every pull request and every push to main.
+# Checks every pull request and every push to main, on x86_64-linux and
+# aarch64-linux.
 #
-# `flake-check` builds the flake's checks on x86_64-linux and
-# aarch64-linux: the fixtures and ZLS offline from their lockfiles, the
-# zig-purifier command with its unit tests, and the formatting. `cli` runs
-# tests/cli.sh, which drives the command as a developer does: interactive
-# mode and the errors of the common mistakes. `relock` runs the lock run,
-# which needs the network and so cannot run in the Nix sandbox, and fails
-# when a lockfile it writes differs from the committed one.
+# `flake-check` builds the flake's checks: the fixtures and ZLS from their
+# lockfiles, the zig-purifier command with its unit tests, the formatting,
+# and the conformance checks that run at evaluation or in the sandbox
+# (stale, tampered, missing, malformed, external). The other jobs run the
+# conformance checks that need the network or a store to compare against:
+#
+# - `conformance-relock` relocks every lockfile and fails when one differs
+#   from the committed one.
+# - `conformance-rebuild` builds the hello package and its release archive
+#   again with `nix build --rebuild`, which fails when the output differs.
+# - `conformance-offline` runs tests/offline.sh: after a prefetch, the
+#   everyday loop and ZLS work behind a dead proxy.
+# - `conformance-update` runs tests/update.sh: `zig-purifier update` moves
+#   an outdated dependency, and both lockfiles pass the stale check after.
+# - `cli` runs tests/cli.sh, which drives the command as a developer does.
 name: check
 
 on:
@@ -31,16 +40,11 @@ jobs:
       - name: Build the checks
         run: nix flake check --print-build-logs
 
-  cli:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31
-      - name: Run tests/cli.sh
-        run: tests/cli.sh
-
-  relock:
-    runs-on: ubuntu-latest
+  conformance-relock:
+    strategy:
+      matrix:
+        runner: [ubuntu-latest, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31
@@ -48,3 +52,49 @@ jobs:
         run: tests/relock.sh
       - name: Compare with the committed lockfiles
         run: git diff --exit-code -- '*.lock.json'
+
+  conformance-rebuild:
+    strategy:
+      matrix:
+        runner: [ubuntu-latest, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31
+      - name: Build the hello package and its release archive twice
+        run: |
+          system=$(nix eval --raw --impure --expr builtins.currentSystem)
+          for check in fixture-hello-package fixture-hello-archive; do
+            nix build --no-link --print-build-logs ".#checks.$system.$check"
+            nix build --no-link --rebuild --print-build-logs ".#checks.$system.$check"
+          done
+
+  conformance-offline:
+    strategy:
+      matrix:
+        runner: [ubuntu-latest, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31
+      - name: Run tests/offline.sh
+        run: tests/offline.sh
+
+  conformance-update:
+    strategy:
+      matrix:
+        runner: [ubuntu-latest, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31
+      - name: Run tests/update.sh
+        run: tests/update.sh
+
+  cli:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31
+      - name: Run tests/cli.sh
+        run: tests/cli.sh

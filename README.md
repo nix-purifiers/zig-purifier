@@ -1,37 +1,32 @@
 # zig-purifier
 
-zig-purifier makes Nix the dependency backend of Zig packages. It records
-every package a `build.zig.zon` needs, directly or through other packages,
-in a lockfile, so that Nix can build the package in its sandbox. You
-commit the lockfile and no generated Nix files.
+zig-purifier makes Nix the dependency backend of Zig packages. Zig has no
+lockfile of its own: `build.zig.zon` names each direct dependency by URL
+and hash, and the dependencies of those live in their own `build.zig.zon`
+files. `zig-purifier lock` records every package a build needs, directly
+or through other packages, in `zig-purifier.lock.json`, so that Nix can
+build the package in its sandbox. You commit the lockfile and no
+generated Nix files.
 
-- **`zig-purifier lock`** walks the `build.zig.zon` of the package, of its
-  path dependencies and of every fetched package, lazy dependencies
-  included. It records each download in `zig-purifier.lock.json` with a
-  Nix hash beside the hash zig gives it. It then builds the package in the
-  Nix sandbox with those downloads alone, and records the build's steps and
-  the files its install step installs.
-- **`buildZigProject`** builds the package from the lockfile in the Nix
-  sandbox, offline, and gives each installed file and each step its own
-  attribute, all known when Nix evaluates the build.
-- **`zig-purifier sync`** links the locked packages where `zig` and ZLS look
-  for them, so `zig build` and your editor work without the network.
+zig-purifier is one of the [nix-purifiers](https://nix-purifiers.github.io),
+which share a contract: the same builder arguments, commands, checks and
+README sections in every ecosystem.
 
 ## Quickstart
 
-In a Zig package (a directory with a `build.zig.zon`):
+In a Zig package (a directory with a `build.zig.zon`), lock it with the
+toolchain of the zig it builds with:
 
 ```zsh
 nix run 'github:nix-purifiers/zig-purifier#toolchain-zig_0_15' -- lock
 ```
 
-Use the toolchain of the zig your package builds with:
-`toolchain-zig_0_14`, `toolchain-zig_0_15`, `toolchain-zig_0_16`, or
-`toolchain` for the default zig of nixpkgs (0.17). The lock records the
-zig version, and the build uses the same one.
+The toolchains are `toolchain-zig_0_14`, `toolchain-zig_0_15`,
+`toolchain-zig_0_16`, and `toolchain` for the default zig of nixpkgs
+(0.17). The lock records the zig version, and the build uses the same one.
 
-Commit `zig-purifier.lock.json`. Then build the package with the flake's
-overlay:
+Commit `zig-purifier.lock.json`, and build the package with the builder
+in the flake's library:
 
 ```nix
 {
@@ -41,19 +36,18 @@ overlay:
   outputs = { nixpkgs, zig-purifier, ... }:
     let
       system = "x86_64-linux";
-      pkgs = import nixpkgs {
-        inherit system;
-        overlays = [ zig-purifier.overlays.default ];
+      pkgs = nixpkgs.legacyPackages.${system};
+      hello = zig-purifier.lib.zig-purifier.buildZigProject {
+        inherit pkgs;
+        src = ./.;
       };
-      hello = pkgs.buildZigProject { src = ./.; };
     in
     {
       packages.${system} = {
-        default = hello.package;
-        # The release archive, with the hash `zig fetch` gives it.
+        default = hello.packages.hello;
         release = hello.release;
       };
-      checks.${system}.test = hello.steps.test;
+      checks.${system}.test = hello.tests;
     };
 }
 ```
@@ -61,142 +55,186 @@ overlay:
 `nix build` builds the install step of the package, and `nix flake check`
 runs its `test` step.
 
-## What `buildZigProject` gives
+The builder takes these arguments:
 
 ```nix
 buildZigProject {
-  src = ./.;           # the package and its path dependencies
-  projectDir = ".";    # where build.zig.zon is, inside src
-  lockFile = null;     # default: zig-purifier.lock.json beside build.zig.zon
-  zig = null;          # default: the nixpkgs zig of the locked version
-  buildFlags = null;   # default: the flags the lock recorded
-  doCheck = false;     # whether `package` also runs checkSteps
+  pkgs;
+  src;                   # the package and its path dependencies
+  projectDir = ".";      # where build.zig.zon is, inside src
+  lockFile = null;       # default: zig-purifier.lock.json beside build.zig.zon
+  fetchers = { };        # fetchurl or fetchgit with credentials or a mirror
+  zig = null;            # default: the nixpkgs zig of the locked version
+  buildFlags = null;     # default: the flags the lock recorded
   checkSteps = [ "test" ];
-  fetchurl = pkgs.fetchurl;   # replace for credentials or mirrors
-  fetchgit = pkgs.fetchgit;   # replace for private repositories
 }
 ```
 
-The result is an attribute set:
+Its result is an attribute set, and every name in it is known when Nix
+evaluates the build, without building it:
 
 | Attribute | What it is |
 |---|---|
-| `package` | `zig build install --prefix $out` |
+| `packages.<name>` | `zig build install --prefix $out`, under the name in `build.zig.zon` |
+| `tests` | the `checkSteps` of `build.zig`, run in the sandbox |
+| `release` | the release archive that `zig-purifier publish` uploads, and in `zig-hash` the hash `zig fetch` gives it |
+| `fetches` | the download entries of the lock, in the format of the [purifier](https://github.com/nix-purifiers/purifier) library |
 | `files."bin/hello"` | each file the install step installs, by its path under the prefix |
 | `executables.hello` | each file under `bin/`, by its name |
-| `steps.test` | each other step of `build.zig`, as a build that runs it |
-| `release` | the release archive of the package, and in `zig-hash` the hash `zig fetch` gives it |
-| `packages` | each dependency, unpacked as zig unpacks it, by its zig hash |
-| `cache` | those packages linked by hash |
-| `lock` | the lockfile |
+| `steps.<step>` | each other step of `build.zig`, as a build that runs it |
+| `dependencies` | each dependency, unpacked as zig unpacks it, by its zig hash |
+| `lock` | the lock as `readLock` reads it |
+
+`lib.zig-purifier.readLock { src, projectDir ? ".", lockFile ? null }`
+reads a lockfile into the shape every purifier shares,
+`{ purifier, entries, outputs, problems }`, which SBOM, license and
+vulnerability tools can read. `problems` lists what makes the lockfile
+unusable, each with the command that fixes it.
 
 Every `zig build` uses the build flags the lock recorded, by default
 `--release=safe -Dcpu=baseline`, a release build for the baseline CPU of
-the architecture. `zig-purifier lock -- FLAGS` records others, and the
+the architecture. `zig-purifier lock -- FLAGS` records other flags. The
 lock decides the installed files with the same flags, so the attributes
 match what the build installs.
 
-## Working on the package
+## Everyday loop
 
-`nix develop github:nix-purifiers/zig-purifier` (or one of the toolchains
-above, in your own devShell) gives a `zig` that runs `zig-purifier sync`
-before each command. With a current lockfile, the locked packages are then
-where zig looks for them, and `zig build`, `zig build test` and
-`zig build run` need no network.
+`nix develop github:nix-purifiers/zig-purifier`, or a toolchain package in
+your own dev shell, puts three programs on the PATH:
 
-- **Your editor.** Run `zig-purifier sync` once after a lock. ZLS then
-  finds every package where zig would, also offline. Zig up to 0.15 looks
-  for a package at `p/<hash>` in its global cache (`zig env` names it), and
-  zig 0.16 and later at `zig-pkg/<hash>` in the project. `sync` links each
-  locked package there, and a link is the package itself, since zig names
-  a package by the hash of its contents.
-- **Adding or upgrading a dependency.** Use `zig fetch --save <url>` as
-  usual, then `zig-purifier lock`. Until you relock, the wrapper warns that
-  the lock is stale and zig fetches the usual way.
-- **The GC root.** `sync` keeps the packages alive with one GC root at
-  `.zig-cache/zig-purifier/packages`. Deleting `.zig-cache` lets
-  `nix-collect-garbage` remove them, and the next `sync` fetches them again.
+- `zig`, which runs `zig-purifier prefetch` before each `zig build`, and
+  passes every other command to zig unchanged;
+- `zig-purifier`;
+- `zls`, the Zig language server of the same zig version.
 
-## What the lock covers
+You work with zig's own commands. `zig build`, `zig build test` and
+`zig build run` use the locked packages. To add a dependency, run
+`zig fetch --save <url>` as usual, then `zig-purifier lock`. Until you
+lock, `zig build` stops with a message naming `zig-purifier lock`.
 
-| Dependency | Recorded as |
+To move dependencies to newer versions, run `zig-purifier update`, or
+`zig-purifier update NAME...` for some of them. It fetches each
+dependency of `build.zig.zon` again with `zig fetch --save`, and then
+locks. A git dependency moves to the newest commit of the ref it was
+fetched at, which `zig fetch --save` records as `?ref=` in its URL. A git
+dependency without a ref moves to the newest commit of its default
+branch, and an archive URL is fetched again as it stands. Dependencies of
+dependencies are pinned by the `build.zig.zon` of the package that names
+them, so they move only when that package does. `zig-purifier lock`
+leaves `build.zig.zon` as it is.
+
+To keep the lockfile outside the project, as for a package whose
+`build.zig.zon` belongs to someone else, pass `--lockfile PATH` to the
+commands, or set `ZIG_PURIFIER_LOCKFILE` (which the `zig` wrapper reads
+too), and pass the same path to the builder as `lockFile`.
+
+To publish a release, run `zig-purifier publish TAG`. Zig has no package
+registry: a package is published as an archive at a URL that others name
+in their `build.zig.zon` with the hash `zig fetch` gives it. `publish`
+builds the `release` of the package with Nix, uploads the archive to a
+GitHub release with `gh release create`, and prints the `.url` and `.hash`
+lines to put in a `build.zig.zon`. `--dry-run` prints the commands instead
+of running them. The archive holds the files under `paths`, with fixed
+owners, modes and times, so the same tree always makes the same bytes.
+
+## Offline work
+
+`zig-purifier prefetch` builds every locked package in the Nix store and
+links each where zig looks for it: at `p/<hash>` in the global cache for
+zig up to 0.15 (`zig env` names that directory), and at `zig-pkg/<hash>`
+in the project for zig 0.16 and later. A link is the package itself, since
+zig names a package by the hash of its contents. `prefetch` also realizes
+the toolchain. After it, `zig build`, its tests and the editor work with
+the network cut off.
+
+`prefetch` keeps the packages and the toolchain alive with GC roots in
+`.zig-purifier/` beside the lockfile. Deleting that directory lets
+`nix-collect-garbage` remove them, and the next `prefetch` fetches them
+again.
+
+## Editor
+
+The toolchains include ZLS. After a `prefetch`, ZLS finds every package
+where zig would, also offline, so go-to-definition on an `@import` of a
+dependency opens the locked package. Point the editor at the `zls` of the
+toolchain, so it matches the zig version of the lock.
+
+## Errors and fixes
+
+Each of these fails in the command and in the Nix evaluation, with a
+message that names the command to run:
+
+| Problem | Message | Fix |
+|---|---|---|
+| `build.zig.zon` changed since the lock | "the build.zig.zon files … changed since … was written" | `zig-purifier lock` |
+| no lockfile | "there is no …zig-purifier.lock.json" | `zig-purifier lock` |
+| a lockfile edited by hand | "… was edited after `zig-purifier lock` wrote it" | `zig-purifier relock` |
+| a lockfile that is not valid, such as one with merge conflict markers | "… is not a valid lockfile" | `zig-purifier relock` |
+| a lockfile of an older format | "… has lock format version …" | `zig-purifier relock` |
+| a dependency missing from the lock | "zig tried to fetch a package that … does not hold" | `zig-purifier lock` |
+| a path dependency outside `src` | "the path dependency … lies outside `src`" | make `src` a directory that holds it, and set `projectDir` |
+
+## Sources supported and refused
+
+| Dependency in `build.zig.zon` | Recorded as |
 |---|---|
 | `.url` of an archive (`.tar.gz`, `.tar.xz`, `.tar.zst`, `.tar`, `.zip`) | a file entry `{ path, url, mirrors, hash }` |
 | `.url` of `git+https://…#<commit>` | a git entry `{ path, git = { url, rev, submodules = false, leaveDotGit = false, commitObject = null }, hash }` |
 | `.url` of `git+ssh://…#<commit>` | a git entry for the same repository over HTTPS |
-| `.path` | part of `src`; its `build.zig.zon` counts toward the lock's freshness |
+| `.path` | part of `src`; its `build.zig.zon` counts toward the freshness of the lock |
 | `.lazy = true` | locked like any other, so every build option builds offline |
 
-The entries are those of [purifier](https://github.com/nix-purifiers/purifier),
-the library the nix-purifiers share, which fetches them.
+The [purifier](https://github.com/nix-purifiers/purifier) library, which
+the nix-purifiers share, fetches the entries. Zig's git fetcher checks out
+no submodules and keeps no `.git`, so a git entry asks for neither. The
+Nix sandbox has no SSH keys, so an SSH dependency is recorded over HTTPS.
+For a private repository or a company mirror, pass `fetchers.fetchgit` or
+`fetchers.fetchurl` with credentials to the builder.
 
-Zig's git fetcher checks out no submodules and keeps no `.git`, so a git
-entry never asks for either. The Nix sandbox has no SSH keys, so an SSH
-dependency is recorded over HTTPS. For a private repository, pass a
-`fetchgit` that carries credentials.
-
-A `file:` URL names a path on one machine, so the lock refuses it and
-asks for a `.path` dependency inside the project. A git URL whose fragment
-names a branch or tag instead of a commit is refused too, because the lock
-could not reproduce it. `zig fetch --save` always writes the commit.
+The lock refuses two kinds of source. A `file:` URL names a path on one
+machine, so the lock asks for a `.path` dependency inside the project
+instead. A git URL whose fragment names a branch or tag rather than a
+commit cannot be reproduced, so the lock asks for `zig fetch --save`,
+which records the commit.
 
 The lock run downloads and unpacks the packages itself, and checks that
-`zig fetch` gives each the hash `build.zig.zon` names. It runs no build
-code of the package outside the sandbox. Its last step, which records the
-steps and installed files, builds the package in the Nix sandbox with the
-locked packages alone, so a missing dependency fails the lock and not a
-later build.
-
-## Common mistakes
-
-| Mistake | What you see |
-|---|---|
-| `build.zig.zon` changed since the lock | the wrapper warns and zig fetches the usual way; `buildZigProject` stops with "changed since … Run `zig-purifier lock` there." |
-| a dependency missing from the lock | the Nix build fails with "zig tried to fetch a package that … does not hold. Run `zig-purifier relock`" |
-| a hand-edited hash | the fetch fails with Nix's hash mismatch, naming the entry |
-| a lockfile that is not valid JSON | the command says so and to run `zig-purifier relock` |
-| a path dependency outside `src` | `buildZigProject` says to make `src` hold it and set `projectDir` |
-
-## Releasing a package
-
-Zig has no package registry. A package is published by putting an archive
-at a URL that others name in their `build.zig.zon`, with the hash
-`zig fetch` gives the archive. `zig-purifier package` writes that archive
-to `zig-out/release` and prints its hash, and `release` builds it in Nix.
-The archive holds the files under `paths`, in one directory, with fixed
-owners, modes and times, so the same tree always makes the same bytes, and
-the command checks that zig gives the archive the hash of the package
-tree.
-
-## Zig versions
+`zig fetch` gives each one the hash `build.zig.zon` names. It runs no
+build code of the package outside the sandbox. Its last step records the
+steps and installed files by building the package in the Nix sandbox
+with the locked packages alone, so a missing dependency fails the lock
+rather than a later build.
 
 The lock and the build work with zig 0.14, 0.15, 0.16 and 0.17, the
-versions nixpkgs provides. The tests build a package with zig 0.15 and
-another with zig 0.17.
+versions nixpkgs provides. The tests build packages with zig 0.15 and
+0.17.
 
-## Tried on real projects
+## Real-world projects
 
 - [ZLS](https://github.com/zigtools/zls), the Zig language server, at its
   0.15.1 release (`f91b2e1e`), with zig 0.15: four archive dependencies,
   one of them lazy. The lock takes about a minute, most of it the build in
   the sandbox. CI builds ZLS from the lockfile in `tests/projects/zls`.
-  As an editor test, ZLS ran on its own source after `zig-purifier sync`,
-  with every download blocked, and resolved `@import("known-folders")` to
-  the locked package.
+  As an editor test, ZLS ran on its own source after a prefetch, with
+  every download blocked, and resolved `@import("known-folders")` to the
+  locked package.
 
-## Development
-
-`nix flake check` builds the fixtures and ZLS from their lockfiles, the
-command with its unit tests, and the formatting. `tests/cli.sh` drives the
-command as a developer does, and `tests/relock.sh` relocks every lockfile,
-which CI then compares with the committed ones.
-
-## Credit
+## Credits
 
 The purifier idea was inspired by nixcloud's
 [cargo (libnix)](https://github.com/nixcloud/cargo), and zig-purifier
 follows the design of
 [sbt-purifier](https://github.com/nix-purifiers/sbt-purifier).
+
+## Development
+
+`nix flake check` builds the fixtures and ZLS from their lockfiles, the
+command with its unit tests, the formatting, and the conformance checks
+that run at evaluation or in the sandbox. The scripts in `tests/` run the
+rest, and CI runs each as a job on x86_64-linux and aarch64-linux:
+`tests/relock.sh` relocks every lockfile for comparison with the
+committed ones, `tests/offline.sh` runs the everyday loop and ZLS after a
+prefetch with no network, `tests/update.sh` updates an outdated fixture,
+and `tests/cli.sh` drives the command as a developer does.
 
 ## License
 
