@@ -18,7 +18,9 @@ runCommand "zig-purifier-toolchain-${zig.version}"
   {
     nativeBuildInputs = [ makeWrapper ];
     passthru = { inherit zig zls cli; };
-    meta.mainProgram = "zig";
+    # `nix run` of a toolchain runs `zig-purifier`, as in
+    # `nix run '…#toolchain-zig_0_15' -- lock`.
+    meta.mainProgram = "zig-purifier";
   }
   ''
     makeWrapper ${cli}/bin/zig-purifier $out/bin/zig \
