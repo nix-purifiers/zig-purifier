@@ -5,8 +5,8 @@ lockfile of its own: `build.zig.zon` names each direct dependency by URL
 and hash, and the dependencies of those live in their own `build.zig.zon`
 files. `zig-purifier lock` records every package a build needs, directly
 or through other packages, in `zig-purifier.lock.json`, so that Nix can
-build the package in its sandbox. You commit the lockfile and no
-generated Nix files.
+build the package in its sandbox. You commit the lockfile, and the Nix
+build reads it as it stands.
 
 zig-purifier is one of the [nix-purifiers](https://nix-purifiers.github.io),
 which share a contract: the same builder arguments, commands, checks and
@@ -25,10 +25,18 @@ The toolchains are `toolchain-zig_0_14`, `toolchain-zig_0_15`,
 `toolchain-zig_0_16`, and `toolchain` for the default zig of nixpkgs
 (0.17). The lock records the zig version, and the build uses the same one.
 
-Commit `zig-purifier.lock.json`, and build the package with the builder
-in the flake's library:
+Commit `zig-purifier.lock.json`. The flake's overlay adds the builder
+`buildZigProject` to the package set, and a package for `callPackage`
+takes it by name:
 
 ```nix
+# package.nix
+{ buildZigProject }:
+(buildZigProject { src = ./.; }).packages.hello
+```
+
+```nix
+# flake.nix
 {
   inputs.zig-purifier.url = "github:nix-purifiers/zig-purifier";
   inputs.nixpkgs.follows = "zig-purifier/nixpkgs";
@@ -36,18 +44,14 @@ in the flake's library:
   outputs = { nixpkgs, zig-purifier, ... }:
     let
       system = "x86_64-linux";
-      pkgs = nixpkgs.legacyPackages.${system};
-      hello = zig-purifier.lib.zig-purifier.buildZigProject {
-        inherit pkgs;
-        src = ./.;
+      pkgs = import nixpkgs {
+        inherit system;
+        overlays = [ zig-purifier.overlays.default ];
       };
     in
     {
-      packages.${system} = {
-        default = hello.packages.hello;
-        release = hello.release;
-      };
-      checks.${system}.test = hello.tests;
+      packages.${system}.default = pkgs.callPackage ./package.nix { };
+      checks.${system}.test = (pkgs.buildZigProject { src = ./.; }).tests;
     };
 }
 ```
@@ -59,7 +63,6 @@ The builder takes these arguments:
 
 ```nix
 buildZigProject {
-  pkgs;
   src;                   # the package and its path dependencies
   projectDir = ".";      # where build.zig.zon is, inside src
   lockFile = null;       # default: zig-purifier.lock.json beside build.zig.zon
@@ -69,6 +72,10 @@ buildZigProject {
   checkSteps = [ "test" ];
 }
 ```
+
+`buildZigProject` takes `fetchurl`, `fetchgit`, the zigs and the
+zig-purifier package scope from the package set by name, and
+`buildZigProject.override` replaces any of them.
 
 Its result is an attribute set, and every name in it is known when Nix
 evaluates the build, without building it:
@@ -97,7 +104,7 @@ the architecture. `zig-purifier lock -- FLAGS` records other flags. The
 lock decides the installed files with the same flags, so the attributes
 match what the build installs.
 
-## Everyday loop
+## Development loop
 
 `nix develop github:nix-purifiers/zig-purifier`, or a toolchain package in
 your own dev shell, puts three programs on the PATH:
@@ -137,7 +144,7 @@ lines to put in a `build.zig.zon`. `--dry-run` prints the commands instead
 of running them. The archive holds the files under `paths`, with fixed
 owners, modes and times, so the same tree always makes the same bytes.
 
-## Offline work
+## Working offline
 
 `zig-purifier prefetch` builds every locked package in the Nix store and
 links each where zig looks for it: at `p/<hash>` in the global cache for
@@ -159,7 +166,7 @@ where zig would, also offline, so go-to-definition on an `@import` of a
 dependency opens the locked package. Point the editor at the `zls` of the
 toolchain, so it matches the zig version of the lock.
 
-## Errors and fixes
+## Troubleshooting
 
 Each of these fails in the command and in the Nix evaluation, with a
 message that names the command to run:
@@ -174,7 +181,7 @@ message that names the command to run:
 | a dependency missing from the lock | "zig tried to fetch a package that … does not hold" | `zig-purifier lock` |
 | a path dependency outside `src` | "the path dependency … lies outside `src`" | make `src` a directory that holds it, and set `projectDir` |
 
-## Sources supported and refused
+## Supported language repositories
 
 | Dependency in `build.zig.zon` | Recorded as |
 |---|---|
@@ -185,28 +192,28 @@ message that names the command to run:
 | `.lazy = true` | locked like any other, so every build option builds offline |
 
 The [purifier](https://github.com/nix-purifiers/purifier) library, which
-the nix-purifiers share, fetches the entries. Zig's git fetcher checks out
-no submodules and keeps no `.git`, so a git entry asks for neither. The
-Nix sandbox has no SSH keys, so an SSH dependency is recorded over HTTPS.
-For a private repository or a company mirror, pass `fetchers.fetchgit` or
+the nix-purifiers share, fetches the entries. A git entry holds the files
+of the commit, as zig's git fetcher checks them out: the files git tracks
+in that commit, without the contents of submodules or a `.git` directory. The Nix build fetches git over HTTPS,
+so an SSH dependency is recorded as the same repository over HTTPS. For a
+private repository or a company mirror, pass `fetchers.fetchgit` or
 `fetchers.fetchurl` with credentials to the builder.
 
-The lock refuses two kinds of source. A `file:` URL names a path on one
-machine, so the lock asks for a `.path` dependency inside the project
-instead. A git URL whose fragment names a branch or tag rather than a
-commit cannot be reproduced, so the lock asks for `zig fetch --save`,
-which records the commit.
+The lock takes a dependency inside the project as a `.path` dependency,
+and a git dependency at a commit, as `zig fetch --save` records it. A
+`file:` URL or a git URL whose fragment names a branch or tag stops the
+lock with a message that names the form to use.
 
 The lock run downloads and unpacks the packages itself, and checks that
-`zig fetch` gives each one the hash `build.zig.zon` names. It runs no
-build code of the package outside the sandbox. Its last step records the
-steps and installed files by building the package in the Nix sandbox
-with the locked packages alone, so a missing dependency fails the lock
-rather than a later build.
+`zig fetch` gives each one the hash `build.zig.zon` names. The build code
+of the package runs in the Nix sandbox: the last step of the lock run
+records the steps and installed files by building the package there with
+the locked packages alone, so a missing dependency fails the lock rather
+than a later build.
 
 The lock and the build work with zig 0.14, 0.15, 0.16 and 0.17, the
 versions nixpkgs provides. The flake provides its toolchains for
-x86_64-linux and aarch64-linux only.
+x86_64-linux and aarch64-linux.
 
 ## Examples
 
@@ -220,9 +227,16 @@ cd zls
 nix run 'github:nix-purifiers/zig-purifier#toolchain-zig_0_15' -- lock
 ```
 
-Then add a `flake.nix` beside its `build.zig.zon`:
+Then add a `package.nix` and a `flake.nix` beside its `build.zig.zon`:
 
 ```nix
+# package.nix
+{ buildZigProject }:
+(buildZigProject { src = ./.; }).packages.zls
+```
+
+```nix
+# flake.nix
 {
   inputs.zig-purifier.url = "github:nix-purifiers/zig-purifier";
   inputs.nixpkgs.follows = "zig-purifier/nixpkgs";
@@ -230,14 +244,13 @@ Then add a `flake.nix` beside its `build.zig.zon`:
   outputs = { nixpkgs, zig-purifier, ... }:
     let
       system = "x86_64-linux";
-      pkgs = nixpkgs.legacyPackages.${system};
-      zls = zig-purifier.lib.zig-purifier.buildZigProject {
-        inherit pkgs;
-        src = ./.;
+      pkgs = import nixpkgs {
+        inherit system;
+        overlays = [ zig-purifier.overlays.default ];
       };
     in
     {
-      packages.${system}.default = zls.packages.zls;
+      packages.${system}.default = pkgs.callPackage ./package.nix { };
       devShells.${system}.default = pkgs.mkShell {
         packages = [ zig-purifier.packages.${system}.toolchain-zig_0_15 ];
       };
@@ -246,10 +259,10 @@ Then add a `flake.nix` beside its `build.zig.zon`:
 ```
 
 Nix reads a flake in a git repository from the files git tracks, so add
-both new files, then build:
+the new files, then build:
 
 ```zsh
-git add flake.nix zig-purifier.lock.json
+git add package.nix flake.nix zig-purifier.lock.json
 nix build
 ./result/bin/zls --version
 ```

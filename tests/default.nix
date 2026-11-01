@@ -9,14 +9,23 @@
 {
   pkgs,
   overlay,
-  buildZigProject,
   readLock,
 }:
 let
   pkgs' = pkgs.extend overlay;
   inherit (pkgs') lib runCommand;
   cli = pkgs'.zig-purifier.cli;
-  build = args: buildZigProject ({ pkgs = pkgs'; } // args);
+  build = pkgs'.buildZigProject;
+
+  # The hello fixture as a consumer writes it: a package for callPackage
+  # that takes the builder by name.
+  helloPackage = pkgs'.callPackage (
+    { buildZigProject }:
+    (buildZigProject {
+      src = ./fixtures;
+      projectDir = "hello";
+    }).packages.hello
+  ) { };
 
   # The hello fixture: zig-clap from an archive, zig-clap from git as a lazy
   # dependency, and the greeting package as a path dependency outside its
@@ -122,6 +131,9 @@ in
   # The package and the release archive themselves, which CI builds again
   # with `nix build --rebuild` for conformance-rebuild.
   fixture-hello-package = hello.packages.hello;
+  fixture-hello-callpackage =
+    prints "fixture-hello-callpackage" "${helloPackage}/bin/hello"
+      "Hello, world!";
   fixture-hello-archive = hello.release;
   fixture-hello-tests = hello.tests;
   fixture-hello-step-run = hello.steps.run;

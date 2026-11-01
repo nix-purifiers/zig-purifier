@@ -3,7 +3,16 @@
 # buildZigProject: builds a Zig package and its locked dependencies in the
 # Nix sandbox, from the package's zig-purifier.lock.json alone.
 #
-#   (lib.zig-purifier.buildZigProject { inherit pkgs; src = ./.; }).packages.hello
+# The file is a package for callPackage: the first argument set is what it
+# takes from the package set, and the result is the builder. The
+# zig-purifier overlay (`overlays.default`) adds it to the package set as
+# `buildZigProject`, so a package written for callPackage takes it like any
+# other builder:
+#
+#   { buildZigProject }: (buildZigProject { src = ./.; }).packages.hello
+#
+# `buildZigProject.override` replaces what it takes from the set, such as
+# `fetchurl` or the zig of a version.
 #
 # The result is an attribute set:
 #
@@ -26,12 +35,33 @@
 # attribute is known when Nix evaluates the build, without building it.
 {
   lib,
+  stdenv,
+  # The fetchers of the lock's download entries: file entries and git
+  # entries.
+  fetchurl,
+  fetchgit,
+  # The zig-purifier package scope, whose `cli` is the builder of the
+  # package cache and the release.
+  zig-purifier,
+  # The zigs a lock can name. The zig of a build is the one of the version
+  # the lock was made with; `zig` is the default zig of nixpkgs.
+  zig,
+  zig_0_14 ? null,
+  zig_0_15 ? null,
+  zig_0_16 ? null,
   # The purifier library (github:nix-purifiers/purifier), which checks the
   # lock and fetches its download entries.
   purifier,
 }:
+let
+  zigs = lib.filter (z: z != null) [
+    zig_0_14
+    zig_0_15
+    zig_0_16
+    zig
+  ];
+in
 {
-  pkgs,
   # The source: the package, and every package its path dependencies name.
   src,
   # The directory of the package's build.zig.zon, relative to `src`.
@@ -53,7 +83,6 @@
   checkSteps ? [ "test" ],
 }:
 let
-  inherit (pkgs) stdenv;
   inherit (stdenv.buildPlatform) system;
 
   lock = import ./read-lock.nix { inherit src projectDir lockFile; };
@@ -66,23 +95,21 @@ let
   );
 
   majorMinor = lib.versions.majorMinor output.zigVersion;
-  zigAttr = "zig_${lib.replaceStrings [ "." ] [ "_" ] majorMinor}";
+  matching = lib.filter (z: lib.versions.majorMinor z.version == majorMinor) zigs;
   zig' =
     if zig != null then
       zig
-    else if pkgs ? ${zigAttr} then
-      pkgs.${zigAttr}
-    else if lib.versions.majorMinor pkgs.zig.version == majorMinor then
-      pkgs.zig
+    else if matching != [ ] then
+      builtins.head matching
     else
-      throw "zig-purifier: the lock was made with zig ${output.zigVersion}, and this package set has no ${zigAttr}. Pass `zig`.";
+      throw "zig-purifier: the lock was made with zig ${output.zigVersion}, and the package set has no zig ${majorMinor}. Pass `zig`, or override `buildZigProject` with one.";
 
   flags = if buildFlags != null then buildFlags else output.buildFlags;
 
-  cli = "${pkgs.callPackage ../../pkgs/cli { }}/bin/zig-purifier";
+  cli = "${zig-purifier.cli}/bin/zig-purifier";
   zigBin = "${zig'}/bin/zig";
 
-  fetch = purifier.fetchEntry ({ inherit pkgs; } // fetchers);
+  fetch = purifier.fetchEntry ({ inherit fetchurl fetchgit; } // fetchers);
   inherit
     (import ./packages.nix {
       inherit

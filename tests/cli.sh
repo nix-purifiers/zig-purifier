@@ -48,9 +48,12 @@ build_package() {
   nix build --no-link --print-out-paths --impure --expr "
     let
       flake = builtins.getFlake \"git+file://$repo\";
-      pkgs = flake.inputs.nixpkgs.legacyPackages.\${builtins.currentSystem};
-    in (flake.lib.zig-purifier.buildZigProject {
-      inherit pkgs; src = /. + \"$1\"; projectDir = \"hello\"; $lock_arg
+      pkgs = import flake.inputs.nixpkgs {
+        system = builtins.currentSystem;
+        overlays = [ flake.overlays.default ];
+      };
+    in (pkgs.buildZigProject {
+      src = /. + \"$1\"; projectDir = \"hello\"; $lock_arg
     }).packages.hello"
 }
 

@@ -96,7 +96,7 @@
             checks = import ../../../tests {
               inherit pkgs;
               overlay = self.overlays.default;
-              inherit (self.lib.zig-purifier) buildZigProject readLock;
+              inherit (self.lib.zig-purifier) readLock;
             };
             treefmt.programs.nixfmt.enable = true;
             treefmt.programs.ruff-format.enable = true;
