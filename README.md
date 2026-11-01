@@ -208,15 +208,13 @@ The lock and the build work with zig 0.14, 0.15, 0.16 and 0.17, the
 versions nixpkgs provides. The tests build packages with zig 0.15 and
 0.17.
 
-## Real-world projects
+## Examples
 
-- [ZLS](https://github.com/zigtools/zls), the Zig language server, at its
-  0.15.1 release (`f91b2e1e`), with zig 0.15: four archive dependencies,
-  one of them lazy. The lock takes about a minute, most of it the build in
-  the sandbox. CI builds ZLS from the lockfile in `tests/projects/zls`.
-  As an editor test, ZLS ran on its own source after a prefetch, with
-  every download blocked, and resolved `@import("known-folders")` to the
-  locked package.
+CI locks and builds [ZLS](https://github.com/zigtools/zls), the Zig
+language server, at its 0.15.1 release with zig 0.15. ZLS has four
+archive dependencies, and one of them is lazy. `tests/projects/zls` holds
+the pinned commit and the lockfile, and `tests/relock.sh` shows the steps
+to lock a project at a pinned commit.
 
 ## Credits
 
