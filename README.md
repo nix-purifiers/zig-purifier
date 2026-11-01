@@ -25,19 +25,39 @@ The toolchains are `toolchain-zig_0_14`, `toolchain-zig_0_15`,
 `toolchain-zig_0_16`, and `toolchain` for the default zig of nixpkgs
 (0.17). The lock records the zig version, and the build uses the same one.
 
-Commit `zig-purifier.lock.json`. The flake's overlay adds one attribute
-to the package set, the scope `zig-purifier`, which holds the builder
-`buildZigProject` beside the command and the toolchain. A package for
-`callPackage` takes the scope by name:
+Then build the package from its directory, with no Nix file added to the
+project:
 
-```nix
-# package.nix
-{ zig-purifier }:
-(zig-purifier.buildZigProject { src = ./.; }).packages.hello
+```zsh
+nix build --impure --expr '
+  let
+    purifier = builtins.getFlake "github:nix-purifiers/zig-purifier";
+    pkgs = import purifier.inputs.nixpkgs {
+      system = builtins.currentSystem;
+      overlays = [ purifier.overlays.default ];
+    };
+  in
+  (pkgs.zig-purifier.buildZigProject { src = ./.; }).packages.hello'
 ```
 
+This uses the purifier's pinned nixpkgs, matching the lock command above.
+To build with ambient `<nixpkgs>` from your Nix search path instead,
+replace `import purifier.inputs.nixpkgs` with `import <nixpkgs>`.
+Both forms need no Nix files in your project. The build tool and language
+versions must match the lockfile; with ambient nixpkgs, lock with the
+purifier from that package set or pass a compatible toolchain to the builder.
+
+`packages.hello` is the install step of the package, under the name in
+its `build.zig.zon`. The flake's overlay adds one attribute to the package
+set, the scope `zig-purifier`, which holds the builder `buildZigProject`
+beside the command and the toolchain. Commit `zig-purifier.lock.json`, so
+that the build finds it beside `build.zig.zon`.
+
+A package whose authors want a flake can ship one, in the repository of
+the package or in another one. The flake applies the overlay and calls the
+builder:
+
 ```nix
-# flake.nix
 {
   inputs.zig-purifier.url = "github:nix-purifiers/zig-purifier";
   inputs.nixpkgs.follows = "zig-purifier/nixpkgs";
@@ -49,10 +69,11 @@ to the package set, the scope `zig-purifier`, which holds the builder
         inherit system;
         overlays = [ zig-purifier.overlays.default ];
       };
+      hello = pkgs.zig-purifier.buildZigProject { src = ./.; };
     in
     {
-      packages.${system}.default = pkgs.callPackage ./package.nix { };
-      checks.${system}.test = (pkgs.zig-purifier.buildZigProject { src = ./.; }).tests;
+      packages.${system}.default = hello.packages.hello;
+      checks.${system}.test = hello.tests;
     };
 }
 ```
@@ -244,48 +265,30 @@ cd zls
 nix run 'github:nix-purifiers/zig-purifier#toolchain-zig_0_15' -- lock
 ```
 
-Then add a `package.nix` and a `flake.nix` beside its `build.zig.zon`:
-
-```nix
-# package.nix
-{ zig-purifier }:
-(zig-purifier.buildZigProject { src = ./.; }).packages.zls
-```
-
-```nix
-# flake.nix
-{
-  inputs.zig-purifier.url = "github:nix-purifiers/zig-purifier";
-  inputs.nixpkgs.follows = "zig-purifier/nixpkgs";
-
-  outputs = { nixpkgs, zig-purifier, ... }:
-    let
-      system = "x86_64-linux";
-      pkgs = import nixpkgs {
-        inherit system;
-        overlays = [ zig-purifier.overlays.default ];
-      };
-    in
-    {
-      packages.${system}.default = pkgs.callPackage ./package.nix { };
-      devShells.${system}.default = pkgs.mkShell {
-        packages = [ zig-purifier.packages.${system}.toolchain-zig_0_15 ];
-      };
-    };
-}
-```
-
-Nix reads a flake in a git repository from the files git tracks, so add
-the new files, then build:
+Then build it from the same directory:
 
 ```zsh
-git add package.nix flake.nix zig-purifier.lock.json
-nix build
+nix build --impure --expr '
+  let
+    purifier = builtins.getFlake "github:nix-purifiers/zig-purifier";
+    pkgs = import purifier.inputs.nixpkgs {
+      system = builtins.currentSystem;
+      overlays = [ purifier.overlays.default ];
+    };
+  in
+  (pkgs.zig-purifier.buildZigProject { src = ./.; }).packages.zls'
 ./result/bin/zls --version
 ```
 
-`nix develop` then gives the `zig` and `zls` of the toolchain, and
-`zig build` in that shell uses the locked packages.
+To work on ZLS with the locked packages, open a shell with the toolchain.
+The `zig` in it fetches the locked packages before each `zig build`, and
+`zig-purifier prefetch` does the same for the editor:
+
+```zsh
+nix shell 'github:nix-purifiers/zig-purifier#toolchain-zig_0_15'
+zig-purifier prefetch
+zig build test
+```
 
 ## Credits
 
