@@ -37,11 +37,20 @@ let
   text = if exists then builtins.readFile path else "";
   # A parse error of builtins.fromJSON cannot be caught. A lockfile that is
   # not one JSON object, such as a truncated one or one with merge conflict
-  # markers, is a problem here instead.
+  # markers, is a problem here instead. Text that looks like one JSON object
+  # and does not parse fails evaluation, with the context naming the
+  # command that writes the lockfile again; the commands check the file
+  # before Nix reads it.
   whole = builtins.match "[[:space:]]*\\{.*}[[:space:]]*" text != null;
   conflicted = builtins.match ".*(<<<<<<<|>>>>>>>).*" text != null;
   parsed = exists && whole && !conflicted;
-  raw = if parsed then builtins.fromJSON text else { };
+  raw =
+    if parsed then
+      builtins.addErrorContext "while reading ${name}, which is not valid JSON. ${relock}" (
+        builtins.fromJSON text
+      )
+    else
+      { };
 
   # The hash `zig-purifier lock` records as `contentHash`, of the lockfile
   # without it, written as builtins.toJSON writes it, which is how the

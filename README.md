@@ -114,15 +114,20 @@ your own dev shell, puts three programs on the PATH:
 - `zig-purifier`;
 - `zls`, the Zig language server of the same zig version.
 
+Zig has no plugin mechanism, so zig-purifier is a command of its own,
+and the `zig` of the toolchain is a wrapper that runs it before
+`zig build`.
+
 You work with zig's own commands. `zig build`, `zig build test` and
 `zig build run` use the locked packages. To add a dependency, run
 `zig fetch --save <url>` as usual, then `zig-purifier lock`. Until you
 lock, `zig build` stops with a message naming `zig-purifier lock`.
 
 To move dependencies to newer versions, run `zig-purifier update`, or
-`zig-purifier update NAME...` for some of them. It fetches each
-dependency of `build.zig.zon` again with `zig fetch --save`, and then
-locks. A git dependency moves to the newest commit of the ref it was
+`zig-purifier update NAME...` for some of them. Zig has no command that
+updates dependencies, so `update` fetches each dependency of
+`build.zig.zon` again with `zig fetch --save`, which records the new URL
+and hash there, and then locks. A git dependency moves to the newest commit of the ref it was
 fetched at, which `zig fetch --save` records as `?ref=` in its URL. A git
 dependency without a ref moves to the newest commit of its default
 branch, and an archive URL is fetched again as it stands. Dependencies of
