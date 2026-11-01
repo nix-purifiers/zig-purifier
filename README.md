@@ -205,16 +205,57 @@ with the locked packages alone, so a missing dependency fails the lock
 rather than a later build.
 
 The lock and the build work with zig 0.14, 0.15, 0.16 and 0.17, the
-versions nixpkgs provides. The tests build packages with zig 0.15 and
-0.17.
+versions nixpkgs provides. The flake provides its toolchains for
+x86_64-linux and aarch64-linux only.
 
 ## Examples
 
-CI locks and builds [ZLS](https://github.com/zigtools/zls), the Zig
-language server, at its 0.15.1 release with zig 0.15. ZLS has four
-archive dependencies, and one of them is lazy. `tests/projects/zls` holds
-the pinned commit and the lockfile, and `tests/relock.sh` shows the steps
-to lock a project at a pinned commit.
+[ZLS](https://github.com/zigtools/zls), the Zig language server, builds
+with zig 0.15 at its 0.15.1 release. To build it with Nix, lock it in a
+checkout of that release:
+
+```zsh
+git clone --branch 0.15.1 https://github.com/zigtools/zls
+cd zls
+nix run 'github:nix-purifiers/zig-purifier#toolchain-zig_0_15' -- lock
+```
+
+Then add a `flake.nix` beside its `build.zig.zon`:
+
+```nix
+{
+  inputs.zig-purifier.url = "github:nix-purifiers/zig-purifier";
+  inputs.nixpkgs.follows = "zig-purifier/nixpkgs";
+
+  outputs = { nixpkgs, zig-purifier, ... }:
+    let
+      system = "x86_64-linux";
+      pkgs = nixpkgs.legacyPackages.${system};
+      zls = zig-purifier.lib.zig-purifier.buildZigProject {
+        inherit pkgs;
+        src = ./.;
+      };
+    in
+    {
+      packages.${system}.default = zls.packages.zls;
+      devShells.${system}.default = pkgs.mkShell {
+        packages = [ zig-purifier.packages.${system}.toolchain-zig_0_15 ];
+      };
+    };
+}
+```
+
+Nix reads a flake in a git repository from the files git tracks, so add
+both new files, then build:
+
+```zsh
+git add flake.nix zig-purifier.lock.json
+nix build
+./result/bin/zls --version
+```
+
+`nix develop` then gives the `zig` and `zls` of the toolchain, and
+`zig build` in that shell uses the locked packages.
 
 ## Credits
 
@@ -225,14 +266,9 @@ follows the design of
 
 ## Development
 
-`nix flake check` builds the fixtures and ZLS from their lockfiles, the
-command with its unit tests, the formatting, and the conformance checks
-that run at evaluation or in the sandbox. The scripts in `tests/` run the
-rest, and CI runs each as a job on x86_64-linux and aarch64-linux:
-`tests/relock.sh` relocks every lockfile for comparison with the
-committed ones, `tests/offline.sh` runs the everyday loop and ZLS after a
-prefetch with no network, `tests/update.sh` updates an outdated fixture,
-and `tests/cli.sh` drives the command as a developer does.
+To work on zig-purifier itself, run `nix flake check` for the checks
+that run in the Nix sandbox, and the scripts in `tests/` for the checks
+that need the network.
 
 ## License
 
