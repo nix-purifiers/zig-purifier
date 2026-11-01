@@ -1,0 +1,54 @@
+{
+  "version": 1,
+  "zigVersion": "0.15.2",
+  "name": "hello",
+  "packageVersion": "0.0.1",
+  "paths": [
+    "build.zig",
+    "build.zig.zon",
+    "src"
+  ],
+  "buildFlags": [
+    "--release=safe",
+    "-Dcpu=baseline"
+  ],
+  "steps": [
+    "install",
+    "run",
+    "test",
+    "uninstall"
+  ],
+  "installed": [
+    "bin/hello",
+    "lib/libgreeting.a"
+  ],
+  "definitionFiles": [
+    "../greeting/build.zig.zon",
+    "build.zig.zon"
+  ],
+  "definitionHash": "3f9f5ff6e44790ff97e1a3ab77a7fc94e839beb65371063adb04f77b2e14997f",
+  "localPackages": [
+    "../greeting"
+  ],
+  "artifacts": [
+    {
+      "path": "git/clap-0.10.0-oBajB-HnAQAhf7Ie-aPnGrRBkQ-86y5844bAMORyIfZD",
+      "git": {
+        "url": "https://github.com/Hejsil/zig-clap",
+        "rev": "a751349695ffda433a5c7d09a09eb49fed465fe6",
+        "submodules": false,
+        "leaveDotGit": false,
+        "commitObject": null
+      },
+      "hash": "sha256-c6ozlWrrB8QiyVMVm9hM5Dr8pv2vrT5Jbapx26qaMiU=",
+      "zigHash": "clap-0.10.0-oBajB-HnAQAhf7Ie-aPnGrRBkQ-86y5844bAMORyIfZD"
+    },
+    {
+      "path": "archives/clap-0.11.0-oBajB-HnAQDPCKYzwF7rO3qDFwRcD39Q0DALlTSz5H7e.tar.gz",
+      "url": "https://github.com/Hejsil/zig-clap/archive/refs/tags/0.11.0.tar.gz",
+      "mirrors": [],
+      "hash": "sha256-fDWd7EQYZuAlBlrpynBuznK89OiiX74xcZsekv84lkg=",
+      "zigHash": "clap-0.11.0-oBajB-HnAQDPCKYzwF7rO3qDFwRcD39Q0DALlTSz5H7e"
+    }
+  ]
+}

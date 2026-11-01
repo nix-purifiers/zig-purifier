@@ -1,0 +1,50 @@
+# SPDX-License-Identifier: MIT
+#
+# Checks every pull request and every push to main.
+#
+# `flake-check` builds the flake's checks on x86_64-linux and
+# aarch64-linux: the fixtures and ZLS offline from their lockfiles, the
+# zig-purifier command with its unit tests, and the formatting. `cli` runs
+# tests/cli.sh, which drives the command as a developer does: interactive
+# mode and the errors of the common mistakes. `relock` runs the lock run,
+# which needs the network and so cannot run in the Nix sandbox, and fails
+# when a lockfile it writes differs from the committed one.
+name: check
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  flake-check:
+    strategy:
+      matrix:
+        runner: [ubuntu-latest, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31
+      - name: Build the checks
+        run: nix flake check --print-build-logs
+
+  cli:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31
+      - name: Run tests/cli.sh
+        run: tests/cli.sh
+
+  relock:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31
+      - name: Relock every lockfile
+        run: tests/relock.sh
+      - name: Compare with the committed lockfiles
+        run: git diff --exit-code -- '*.lock.json'

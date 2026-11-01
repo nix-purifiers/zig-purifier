@@ -1,0 +1,29 @@
+.{
+    .name = .hello,
+    .version = "0.0.1",
+    .minimum_zig_version = "0.15.2",
+    .dependencies = .{
+        // An archive dependency.
+        .clap = .{
+            .url = "https://github.com/Hejsil/zig-clap/archive/refs/tags/0.11.0.tar.gz",
+            .hash = "clap-0.11.0-oBajB-HnAQDPCKYzwF7rO3qDFwRcD39Q0DALlTSz5H7e",
+        },
+        // A git dependency that the build fetches only with -Dgit-clap=true.
+        .clap_git = .{
+            .url = "git+https://github.com/Hejsil/zig-clap#a751349695ffda433a5c7d09a09eb49fed465fe6",
+            .hash = "clap-0.10.0-oBajB-HnAQAhf7Ie-aPnGrRBkQ-86y5844bAMORyIfZD",
+            .lazy = true,
+        },
+        // A path dependency outside this directory.
+        .greeting = .{
+            .path = "../greeting",
+        },
+    },
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+    },
+    .fingerprint = 0x3610a686a09531ac,
+}
+// A change after the lock.

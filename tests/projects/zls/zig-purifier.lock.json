@@ -1,0 +1,61 @@
+{
+  "version": 1,
+  "zigVersion": "0.15.2",
+  "name": "zls",
+  "packageVersion": "0.15.1",
+  "paths": [
+    ""
+  ],
+  "buildFlags": [
+    "--release=safe",
+    "-Dcpu=baseline"
+  ],
+  "steps": [
+    "check",
+    "gen",
+    "install",
+    "release",
+    "test",
+    "test-analysis",
+    "test-build-runner",
+    "uninstall"
+  ],
+  "installed": [
+    "bin/zls"
+  ],
+  "definitionFiles": [
+    "build.zig.zon"
+  ],
+  "definitionHash": "f1b1ace6fde247a343004ba99cab71057e70cf40b9fe43393c8061b299804711",
+  "localPackages": [],
+  "artifacts": [
+    {
+      "path": "archives/N-V-__8AAMeOlQEipHjcyu0TCftdAi9AQe7EXUDJOoVe0k-t.tar.gz",
+      "url": "https://github.com/wolfpld/tracy/archive/refs/tags/v0.11.1.tar.gz",
+      "mirrors": [],
+      "hash": "sha256-LBHKgW8rdWvicw+GsAkpIEGfPavHpxc4Kf/Yl9kYiKE=",
+      "zigHash": "N-V-__8AAMeOlQEipHjcyu0TCftdAi9AQe7EXUDJOoVe0k-t"
+    },
+    {
+      "path": "archives/diffz-0.0.1-G2tlIQrOAQCfH15jdyaLyrMgV8eGPouFhkCeYFTmJaLk.tar.gz",
+      "url": "https://github.com/ziglibs/diffz/archive/a20dd1f11b10819a6f570f98b42e1c91e3704357.tar.gz",
+      "mirrors": [],
+      "hash": "sha256-xP6dBiTKWpSZ/EWS5ATu25STRJHvIU5Rmb5hxEHXwHQ=",
+      "zigHash": "diffz-0.0.1-G2tlIQrOAQCfH15jdyaLyrMgV8eGPouFhkCeYFTmJaLk"
+    },
+    {
+      "path": "archives/known_folders-0.0.0-Fy-PJkfRAAAVdptXWXBspIIC7EkVgLgWozU5zIk5Zgcy.tar.gz",
+      "url": "https://github.com/ziglibs/known-folders/archive/92defaee76b07487769ca352fd0ba95bc8b42a2f.tar.gz",
+      "mirrors": [],
+      "hash": "sha256-siSM6ZlY0XAj/NYMYG+iDGnwif9od6ojrs2leCS+eEQ=",
+      "zigHash": "known_folders-0.0.0-Fy-PJkfRAAAVdptXWXBspIIC7EkVgLgWozU5zIk5Zgcy"
+    },
+    {
+      "path": "archives/lsp_kit-0.1.0-bi_PL04yCgAxLsF0hH2a5sZKT84MGQaKXouw2jvCE8Nl.tar.gz",
+      "url": "https://github.com/zigtools/lsp-kit/archive/576e9405b1ab22c17c0f9318feed3278aa66b0ea.tar.gz",
+      "mirrors": [],
+      "hash": "sha256-3SCilRFE+cdVwoKFNULk9BfmDGZzgX0EQGcZJES/2r4=",
+      "zigHash": "lsp_kit-0.1.0-bi_PL04yCgAxLsF0hH2a5sZKT84MGQaKXouw2jvCE8Nl"
+    }
+  ]
+}

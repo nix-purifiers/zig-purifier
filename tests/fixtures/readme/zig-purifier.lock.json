@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "zigVersion": "0.17.0",
+  "name": "readme",
+  "packageVersion": "0.0.1",
+  "paths": [
+    "build.zig",
+    "build.zig.zon"
+  ],
+  "buildFlags": [
+    "--release=safe"
+  ],
+  "steps": [
+    "install",
+    "uninstall"
+  ],
+  "installed": [
+    "share/clap-README.md"
+  ],
+  "definitionFiles": [
+    "build.zig.zon"
+  ],
+  "definitionHash": "5be5b258faa17d01cc5e3d45f4196a8df667009f239e55a4f04b2adba592f2d7",
+  "localPackages": [],
+  "artifacts": [
+    {
+      "path": "archives/clap-0.11.0-oBajB-HnAQDPCKYzwF7rO3qDFwRcD39Q0DALlTSz5H7e.tar.gz",
+      "url": "https://github.com/Hejsil/zig-clap/archive/refs/tags/0.11.0.tar.gz",
+      "mirrors": [],
+      "hash": "sha256-fDWd7EQYZuAlBlrpynBuznK89OiiX74xcZsekv84lkg=",
+      "zigHash": "clap-0.11.0-oBajB-HnAQDPCKYzwF7rO3qDFwRcD39Q0DALlTSz5H7e"
+    }
+  ]
+}
