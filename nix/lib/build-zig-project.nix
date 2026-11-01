@@ -26,6 +26,9 @@
   stdenv,
   pkgs,
   zig-purifier,
+  # The purifier library (github:nix-purifiers/purifier), which fetches
+  # the download entries of the lockfile.
+  purifier,
 }:
 {
   # The source: the package, and every package its path dependencies name.
@@ -45,7 +48,8 @@
   doCheck ? false,
   checkSteps ? [ "test" ],
   # Replace the fetchers of the locked downloads, for credentials or more
-  # mirrors (see nix/lib/fetch.nix).
+  # mirrors. The purifier library calls them with the arguments the
+  # nixpkgs fetchers of the same names take.
   fetchurl ? pkgs.fetchurl,
   fetchgit ? pkgs.fetchgit,
 }:
@@ -105,7 +109,7 @@ let
   cli = "${zig-purifier.cli}/bin/zig-purifier";
   zigBin = "${zig'}/bin/zig";
 
-  fetch = import ./fetch.nix { inherit lock fetchurl fetchgit; };
+  fetch = purifier.fetchEntry { inherit pkgs fetchurl fetchgit; };
   inherit
     (import ./packages.nix {
       inherit lock fetch cli;

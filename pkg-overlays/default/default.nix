@@ -15,6 +15,8 @@ in
     final: prev:
     packages final prev
     // {
-      buildZigProject = final.callPackage ../../nix/lib/build-zig-project.nix { };
+      buildZigProject = final.callPackage ../../nix/lib/build-zig-project.nix {
+        inherit (closure-lib) purifier;
+      };
     };
 }

@@ -16,8 +16,19 @@
   git,
   zig_0_15,
 }:
+let
+  # The purifier library and the nixpkgs library that this flake pins,
+  # which nix/lib/library.nix fetches for the evaluations without nixpkgs.
+  lockNodes = (builtins.fromJSON (builtins.readFile ../../flake.lock)).nodes;
+  libraries = builtins.toJSON {
+    purifier = lockNodes.purifier.locked;
+    nixpkgsLib = lockNodes.nixpkgs-lib.locked;
+  };
+in
 stdenvNoCC.mkDerivation {
   pname = "zig-purifier";
+  inherit libraries;
+  passAsFile = [ "libraries" ];
   version = "0.1.0";
 
   src = lib.fileset.toSource {
@@ -50,6 +61,7 @@ stdenvNoCC.mkDerivation {
     mkdir -p $out/libexec/zig-purifier $out/share/zig-purifier/nix
     cp pkgs/cli/src/zon.py pkgs/cli/src/zig_purifier.py $out/libexec/zig-purifier/
     cp nix/lib/*.nix $out/share/zig-purifier/nix/
+    cp $librariesPath $out/share/zig-purifier/nix/libraries.json
     makeWrapper ${lib.getExe python3} $out/bin/zig-purifier \
       --add-flags $out/libexec/zig-purifier/zig_purifier.py \
       --set ZIG_PURIFIER_NIX_LIB $out/share/zig-purifier/nix \

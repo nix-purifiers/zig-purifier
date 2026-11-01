@@ -16,7 +16,7 @@
 }:
 let
   lock = import (libDir + "/lock.nix") { inherit lockFile; };
-  fetch = import (libDir + "/fetch.nix") { inherit lock; };
+  fetch = import (libDir + "/library.nix") { inherit libDir; };
 
   # A store path as a string with the store object in its context, so the
   # builds that run it may read it.

@@ -53,7 +53,4 @@ assert
 lock
 // {
   inherit storeName computeDefinitionHash;
-
-  # The fetch name of an entry: its tree path, made a valid store name.
-  artifactName = artifact: storeName artifact.path;
 }

@@ -127,6 +127,9 @@ where zig looks for them, and `zig build`, `zig build test` and
 | `.path` | part of `src`; its `build.zig.zon` counts toward the lock's freshness |
 | `.lazy = true` | locked like any other, so every build option builds offline |
 
+The entries are those of [purifier](https://github.com/nix-purifiers/purifier),
+the library the nix-purifiers share, which fetches them.
+
 Zig's git fetcher checks out no submodules and keeps no `.git`, so a git
 entry never asks for either. The Nix sandbox has no SSH keys, so an SSH
 dependency is recorded over HTTPS. For a private repository, pass a

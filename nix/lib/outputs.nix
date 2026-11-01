@@ -24,7 +24,7 @@
 }:
 let
   lock = import (libDir + "/lock.nix") { inherit lockFile; };
-  fetch = import (libDir + "/fetch.nix") { inherit lock; };
+  fetch = import (libDir + "/library.nix") { inherit libDir; };
   inStore =
     what: path:
     let
