@@ -335,9 +335,7 @@ zig build test
 ## Credits
 
 The purifier idea was inspired by nixcloud's
-[cargo (libnix)](https://github.com/nixcloud/cargo), and zig-purifier
-follows the design of
-[sbt-purifier](https://github.com/nix-purifiers/sbt-purifier).
+[cargo (libnix)](https://github.com/nixcloud/cargo).
 
 ## Development
 
