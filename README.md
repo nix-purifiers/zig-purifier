@@ -5,12 +5,6 @@ Nix-resolved dependencies. Use the normal build and test commands in your
 working tree; building the project itself in the Nix sandbox is an
 optional next step.
 
-It follows the [purifier contract](https://github.com/nix-purifiers/purifier/blob/main/CONTRACT.md).
-
-zig-purifier is one of the [nix-purifiers](https://nix-purifiers.github.io),
-which share a contract: the same builder arguments, commands, checks and
-README sections in every ecosystem.
-
 ## Installation
 
 Install the integration into your Nix profile once:
