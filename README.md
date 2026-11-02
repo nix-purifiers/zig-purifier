@@ -37,8 +37,8 @@ For persistent use, add these packages through your usual Nix configuration.
 
 ## Development loop
 
-`nix develop github:nix-purifiers/zig-purifier`, or a toolchain package in
-your own dev shell, puts three programs on the PATH:
+`nix shell 'github:nix-purifiers/zig-purifier#toolchain-zig_0_15'`, or a toolchain package in
+your usual environment, puts three programs on the PATH:
 
 - `zig`, which runs `zig-purifier prefetch` before each `zig build`, and
   passes every other command to zig unchanged;
