@@ -10,7 +10,8 @@ optional next step.
 Install the integration into your Nix profile once:
 
 ```sh
-nix profile install 'github:nix-purifiers/zig-purifier#toolchain-zig_0_15'
+nix profile install \
+  'github:nix-purifiers/zig-purifier#toolchain-zig_0_15'
 ```
 
 This installs the `zig` wrapper. Use it for the locked
@@ -195,15 +196,15 @@ For an ad hoc build, the builder can also be evaluated directly from the
 project root. Replace the example package name with one from your project:
 
 ```zsh
-nix build --impure --expr '
-  let
-    purifier = builtins.getFlake "github:nix-purifiers/zig-purifier";
-    pkgs = import purifier.inputs.nixpkgs {
-      system = builtins.currentSystem;
-      overlays = [ purifier.overlays.default ];
-    };
-  in
-  (pkgs.zig-purifier.buildZigProject { src = ./.; }).packages.hello'
+nix build --impure --expr 'let
+  purifier = builtins.getFlake "github:nix-purifiers/zig-purifier";
+  pkgs = import purifier.inputs.nixpkgs {
+    system = builtins.currentSystem;
+    overlays = [ purifier.overlays.default ];
+  };
+in
+(pkgs.zig-purifier.buildZigProject { src = ./.; })
+.packages.hello'
 ```
 
 This uses the purifier's pinned nixpkgs, matching the lock command above.
@@ -298,21 +299,21 @@ checkout of that release:
 ```zsh
 git clone --branch 0.15.1 https://github.com/zigtools/zls
 cd zls
-nix run 'github:nix-purifiers/zig-purifier#toolchain-zig_0_15' -- lock
+nix run 'github:nix-purifiers/zig-purifier#toolchain-zig_0_15' \
+  -- lock
 ```
 
 Then build it from the same directory:
 
 ```zsh
-nix build --impure --expr '
-  let
-    purifier = builtins.getFlake "github:nix-purifiers/zig-purifier";
-    pkgs = import purifier.inputs.nixpkgs {
-      system = builtins.currentSystem;
-      overlays = [ purifier.overlays.default ];
-    };
-  in
-  (pkgs.zig-purifier.buildZigProject { src = ./.; }).packages.zls'
+nix build --impure --expr 'let
+  purifier = builtins.getFlake "github:nix-purifiers/zig-purifier";
+  pkgs = import purifier.inputs.nixpkgs {
+    system = builtins.currentSystem;
+    overlays = [ purifier.overlays.default ];
+  };
+in
+(pkgs.zig-purifier.buildZigProject { src = ./.; }).packages.zls'
 ./result/bin/zls --version
 ```
 
