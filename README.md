@@ -285,10 +285,10 @@ with zig 0.15 at its 0.15.1 release. To build it with Nix, lock it in a
 checkout of that release:
 
 ```zsh
+nix shell 'github:nix-purifiers/zig-purifier#toolchain-zig_0_15'
 git clone --branch 0.15.1 https://github.com/zigtools/zls
 cd zls
-nix run 'github:nix-purifiers/zig-purifier#toolchain-zig_0_15' \
-  -- lock
+zig-purifier lock
 ```
 
 Then build it from the same directory:
