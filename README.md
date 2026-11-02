@@ -101,17 +101,21 @@ builder:
 
 ```nix
 {
-  inputs.zig-purifier.url = "github:nix-purifiers/zig-purifier";
+  inputs.zig-purifier.url =
+    "github:nix-purifiers/zig-purifier";
   inputs.nixpkgs.follows = "zig-purifier/nixpkgs";
 
-  outputs = { nixpkgs, zig-purifier, ... }:
+  outputs =
+    { nixpkgs, zig-purifier, ... }:
     let
       system = "x86_64-linux";
       pkgs = import nixpkgs {
         inherit system;
         overlays = [ zig-purifier.overlays.default ];
       };
-      hello = pkgs.zig-purifier.buildZigProject { src = ./.; };
+      hello = pkgs.zig-purifier.buildZigProject {
+        src = ./.;
+      };
     in
     {
       packages.${system}.default = hello.packages.hello;
@@ -127,12 +131,16 @@ The builder takes these arguments:
 
 ```nix
 buildZigProject {
-  src;                   # the package and its path dependencies
-  projectDir = ".";      # where build.zig.zon is, inside src
-  lockFile = null;       # default: zig-purifier.lock.json beside build.zig.zon
-  fetchers = { };        # fetchurl or fetchgit with credentials or a mirror
-  zig = null;            # default: the nixpkgs zig of the locked version
-  buildFlags = null;     # default: the flags the lock recorded
+  inherit src; # the package and its path dependencies
+  projectDir = "."; # where build.zig.zon is, inside src
+  # default: zig-purifier.lock.json beside build.zig.zon
+  lockFile = null;
+  # fetchurl or fetchgit with credentials or a mirror
+  fetchers = { };
+  # default: the nixpkgs zig of the locked version
+  zig = null;
+  # default: the flags the lock recorded
+  buildFlags = null;
   checkSteps = [ "test" ];
 }
 ```
