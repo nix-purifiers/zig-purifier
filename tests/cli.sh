@@ -107,7 +107,11 @@ cmp "$hello/zig-purifier.lock.json" tests/fixtures/hello/zig-purifier.lock.json 
 
 echo "== An edited lockfile: the command says to relock"
 cp "$hello/zig-purifier.lock.json" "$work/lock.orig"
-sed -i '0,/"hash": "sha256-[^"]*"/s//"hash": "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="/' "$hello/zig-purifier.lock.json"
+# The first hash, edited. sed reads the copy: BSD sed has neither a -i
+# without a suffix nor the address 0,/re/ (line 1 is `{`, so 1,/re/ is
+# the same here).
+sed '1,/"hash": "sha256-[^"]*"/s/"hash": "sha256-[^"]*"/"hash": "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="/' \
+  "$work/lock.orig" > "$hello/zig-purifier.lock.json"
 expect_failure 'edited after .*zig-purifier relock' sh -c "cd '$hello' && zig-purifier prefetch"
 expect_failure 'edited after .*zig-purifier relock' build_package "$work/fixtures"
 cp "$work/lock.orig" "$hello/zig-purifier.lock.json"
