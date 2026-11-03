@@ -279,7 +279,7 @@ than a later build.
 
 The lock and the build work with zig 0.14, 0.15, 0.16 and 0.17, the
 versions nixpkgs provides. The flake provides its toolchains for
-x86_64-linux and aarch64-linux.
+x86_64-linux, aarch64-linux and aarch64-darwin.
 
 ## Examples
 

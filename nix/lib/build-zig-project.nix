@@ -174,20 +174,30 @@ let
       fi
     '';
 
-  package = stdenv.mkDerivation {
-    pname = name;
-    inherit (output) version;
-    nativeBuildInputs = [ zig' ];
-    dontUnpack = true;
-    dontConfigure = true;
-    buildPhase = ''
-      runHook preBuild
-      ${setup}
-      ${zigBuild [ "install" ] "--prefix $out"}
-      runHook postBuild
-    '';
-    dontInstall = true;
-  };
+  package = stdenv.mkDerivation (
+    {
+      pname = name;
+      inherit (output) version;
+      nativeBuildInputs = [ zig' ];
+      dontUnpack = true;
+      dontConfigure = true;
+      buildPhase = ''
+        runHook preBuild
+        ${setup}
+        ${zigBuild [ "install" ] "--prefix $out"}
+        runHook postBuild
+      '';
+      dontInstall = true;
+    }
+    # On darwin, the strip hook's ranlib writes the archive index with the
+    # ids of the build user, which differs between builds there. `-D`
+    # writes zeros, as zig itself does.
+    // lib.optionalAttrs stdenv.hostPlatform.isDarwin {
+      preFixup = ''
+        RANLIB="$RANLIB -D"
+      '';
+    }
+  );
 
   # A build that runs `steps` of build.zig and succeeds when they do.
   run =
