@@ -119,6 +119,24 @@ let
     '';
 in
 {
+  native-projections =
+    let
+      ffi = build {
+        src = ./fixtures/ffi;
+        lockFile =
+          if pkgs.stdenv.hostPlatform.isDarwin then
+            ./fixtures/ffi/darwin.lock.json
+          else
+            ./fixtures/ffi/zig-purifier.lock.json;
+        nativeLibraries.proof = "lib/libproof${pkgs.stdenv.hostPlatform.extensions.sharedLibrary}";
+      };
+    in
+    import ./native-consumer.nix {
+      inherit pkgs;
+      projection = ffi.projections;
+      library = "proof";
+      symbol = "answer";
+    };
   inherit cli;
 
   fixture-hello = prints "fixture-hello" "${hello.executables.hello} --name Nix" "Hello, Nix!";
