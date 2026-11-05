@@ -323,6 +323,27 @@ zig-purifier prefetch
 zig build test
 ```
 
+## Native library projections
+
+Declare installed shared libraries with `nativeLibraries = {
+proof = "lib/libproof.so"; };` on `buildZigProject`. Each path must occur in the
+lock's installed-file inventory. For portable packaging, use
+`pkgs.stdenv.hostPlatform.extensions.sharedLibrary` for the suffix. Optional
+`nativeIncludeDirectories` records installed header directories.
+
+The build result and its package expose `projections.native`, `python-ffi`, and
+`java-ffi`, with the shared binary validation, catalog and ctypes/Java loading
+interfaces. The catalog retains the selected Zig compiler version and producer
+identity. Explicit selection does not establish symbol signatures or convert
+Zig's native types to a C ABI; export deliberate C-callable functions and retain
+runtime libraries in the producer closure. Static/executable outputs have no
+foreign projections unless selected, and the binary check rejects them.
+
+A small shared-library fixture builds through the actual purifier and returns
+42 through ordinary Python ctypes and Java FFM. Its platform-specific installed
+file inventories are committed source fixture locks, requiring no build during
+evaluation. Java 21 uses preview FFM flags; no JNI bindings are generated.
+
 ## Credits
 
 The purifier idea was inspired by nixcloud's

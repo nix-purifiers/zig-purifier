@@ -1,0 +1,24 @@
+{
+  "version": 2,
+  "zigVersion": "0.15.2",
+  "name": "hello",
+  "packageVersion": "0.0.1",
+  "buildFlags": [
+    "--release=safe",
+    "-Dcpu=baseline"
+  ],
+  "steps": [
+    "install",
+    "uninstall"
+  ],
+  "installed": [
+    "lib/libproof.dylib"
+  ],
+  "definitionFiles": [
+    "build.zig.zon"
+  ],
+  "definitionHash": "441fcbf8c8066ebc24e4abf0f31659db2a10ece6a94f618e5db39a642408609f",
+  "localPackages": [],
+  "artifacts": [],
+  "contentHash": "ff88809b931572b32b2ab494feb32e10c0ce44d5d1e85065df0940c73f875ca3"
+}

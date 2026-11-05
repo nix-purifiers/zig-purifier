@@ -53,6 +53,8 @@
   # The purifier library (github:nix-purifiers/purifier), which checks the
   # lock and fetches its download entries.
   purifier,
+  runCommand,
+  python3,
 }:
 let
   zigs = lib.filter (z: z != null) [
@@ -65,6 +67,8 @@ in
 {
   # The source: the package, and every package its path dependencies name.
   src,
+  nativeLibraries ? { },
+  nativeIncludeDirectories ? [ ],
   # The directory of the package's build.zig.zon, relative to `src`.
   projectDir ? ".",
   # The lockfile. By default, zig-purifier.lock.json beside build.zig.zon.
@@ -174,7 +178,7 @@ let
       fi
     '';
 
-  package = stdenv.mkDerivation (
+  builtPackage = stdenv.mkDerivation (
     {
       pname = name;
       inherit (output) version;
@@ -198,6 +202,20 @@ let
       '';
     }
   );
+
+  projections = lib.optionalAttrs (nativeLibraries != { }) (
+    purifier.nativeProjections {
+      producer = builtPackage;
+      libraries = nativeLibraries;
+      includeDirectories = nativeIncludeDirectories;
+      system = stdenv.hostPlatform.system;
+      targetMetadata.zig = zig'.version;
+      inherit runCommand python3;
+    }
+  );
+  package = builtPackage // {
+    inherit projections;
+  };
 
   # A build that runs `steps` of build.zig and succeeds when they do.
   run =
@@ -229,10 +247,13 @@ let
 
   binaries = builtins.filter (f: lib.hasPrefix "bin/" f) output.installed;
 in
+assert
+  builtins.all (file: builtins.elem file output.installed) (builtins.attrValues nativeLibraries)
+  || throw "zig-purifier: nativeLibraries must select locked installed files";
 {
   packages.${name} = package;
   tests = run "${name}-tests" (builtins.filter (s: builtins.elem s output.steps) checkSteps);
-  inherit release;
+  inherit release projections;
   lock = checked;
   fetches = checked.entries;
   dependencies = packages;
