@@ -119,6 +119,7 @@ let
     '';
 in
 {
+  wasm-projections = import ./wasm.nix { inherit pkgs build; };
   native-projections =
     let
       ffi = build {

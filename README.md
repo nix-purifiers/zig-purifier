@@ -344,6 +344,32 @@ A small shared-library fixture builds through the actual purifier and returns
 file inventories are committed source fixture locks, requiring no build during
 evaluation. Java 21 uses preview FFM flags; no JNI bindings are generated.
 
+## Core WebAssembly projections
+
+Select a locked installed Wasm output explicitly:
+
+```nix
+wasmModules.proof = {
+  path = "bin/proof.wasm";
+  imports = [ { module = "provider"; name = "base"; kind = "function"; } ];
+};
+```
+
+The native `build.zig` and locked build flags select the compiler target; for
+example `-Dtarget=wasm32-freestanding`. Each selected path must occur in the
+installed-file inventory. The result and compiled package expose
+`projections.wasm.modules.<name>` and a catalog of actual imports/exports,
+byte digests and the pinned validator version. Resource/web/Java-resource views
+provide `.directory`, `.documentRoot`, and `.classPath`. The existing native
+shared-library selection remains separate.
+
+The shared helper validates core binary modules and matches explicitly declared
+import names/kinds; it does not infer function signatures or provide host
+imports. The check compiles an actual Zig Wasm target, supplies a native host
+function in ordinary Node, observes answer42, rejects a missing provider, and
+checks HTTP/Java resource bytes. It does not execute a browser or claim WASI,
+component/WIT, generated bindings, npm packaging or other compiler versions.
+
 ## Credits
 
 The purifier idea was inspired by nixcloud's
