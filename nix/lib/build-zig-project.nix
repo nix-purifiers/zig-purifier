@@ -55,6 +55,7 @@
   purifier,
   runCommand,
   python3,
+  nodejs,
 }:
 let
   zigs = lib.filter (z: z != null) [
@@ -68,6 +69,7 @@ in
   # The source: the package, and every package its path dependencies name.
   src,
   nativeLibraries ? { },
+  wasmModules ? { },
   nativeIncludeDirectories ? [ ],
   # The directory of the package's build.zig.zon, relative to `src`.
   projectDir ? ".",
@@ -203,16 +205,24 @@ let
     }
   );
 
-  projections = lib.optionalAttrs (nativeLibraries != { }) (
-    purifier.nativeProjections {
-      producer = builtPackage;
-      libraries = nativeLibraries;
-      includeDirectories = nativeIncludeDirectories;
-      system = stdenv.hostPlatform.system;
-      targetMetadata.zig = zig'.version;
-      inherit runCommand python3;
-    }
-  );
+  projections =
+    lib.optionalAttrs (nativeLibraries != { }) (
+      purifier.nativeProjections {
+        producer = builtPackage;
+        libraries = nativeLibraries;
+        includeDirectories = nativeIncludeDirectories;
+        system = stdenv.hostPlatform.system;
+        targetMetadata.zig = zig'.version;
+        inherit runCommand python3;
+      }
+    )
+    // lib.optionalAttrs (wasmModules != { }) (
+      purifier.wasmProjections {
+        producer = builtPackage;
+        modules = wasmModules;
+        inherit runCommand python3 nodejs;
+      }
+    );
   package = builtPackage // {
     inherit projections;
   };
@@ -250,6 +260,10 @@ in
 assert
   builtins.all (file: builtins.elem file output.installed) (builtins.attrValues nativeLibraries)
   || throw "zig-purifier: nativeLibraries must select locked installed files";
+assert
+  builtins.all (module: builtins.elem module.path output.installed) (builtins.attrValues wasmModules)
+  || throw "zig-purifier: wasmModules must select locked installed files";
+
 {
   packages.${name} = package;
   tests = run "${name}-tests" (builtins.filter (s: builtins.elem s output.steps) checkSteps);

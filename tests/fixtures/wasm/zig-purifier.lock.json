@@ -1,0 +1,25 @@
+{
+  "version": 2,
+  "zigVersion": "0.15.2",
+  "name": "hello",
+  "packageVersion": "0.0.1",
+  "buildFlags": [
+    "--release=safe",
+    "-Dtarget=wasm32-freestanding",
+    "-Dcpu=baseline"
+  ],
+  "steps": [
+    "install",
+    "uninstall"
+  ],
+  "installed": [
+    "bin/proof.wasm"
+  ],
+  "definitionFiles": [
+    "build.zig.zon"
+  ],
+  "definitionHash": "441fcbf8c8066ebc24e4abf0f31659db2a10ece6a94f618e5db39a642408609f",
+  "localPackages": [],
+  "artifacts": [],
+  "contentHash": "cff9fdad348bbd9a77b29e10e891c8770c0bacf0a3859102db9454c8a2ac2083"
+}
