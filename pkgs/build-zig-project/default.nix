@@ -30,7 +30,7 @@
 #                    its name, as a build that runs it
 #   dependencies     the dependencies, each unpacked as zig unpacks it, by
 #                    its zig hash
-#   lock             the lock in memory (nix/lib/read-lock.nix)
+#   lock             the lock in memory (lib-overlays/default/read-lock.nix)
 #
 # The lock run records the steps and the installed files, so every
 # attribute is known when Nix evaluates the build, without building it.
@@ -92,7 +92,7 @@ in
 let
   inherit (stdenv.buildPlatform) system;
 
-  lock = import ./read-lock.nix { inherit src projectDir lockFile; };
+  lock = import ../../lib-overlays/default/read-lock.nix { inherit src projectDir lockFile; };
   checked = purifier.checkLock lock;
   name = builtins.head (builtins.attrNames checked.outputs);
   output = checked.outputs.${name};

@@ -4,7 +4,7 @@
 # the scope `pkgs.zig-purifier`, made with lib.makeScope. The scope holds
 # the packages of pkgs/ (the command `.cli` and the default toolchain
 # `.toolchain`) and the builder `.buildZigProject`
-# (nix/lib/build-zig-project.nix), a package for callPackage in that scope.
+# (pkgs/build-zig-project/default.nix), a package for callPackage in that scope.
 # The builder checks and fetches the lock with the purifier library, which
 # this flake lists in `projects`, so its composed library holds it as
 # `purifier`. A consumer that lists this flake in `projects` holds this
@@ -24,7 +24,7 @@ in
     // {
       zig-purifier = added.zig-purifier.overrideScope (
         scope: _: {
-          buildZigProject = scope.callPackage ../../nix/lib/build-zig-project.nix {
+          buildZigProject = scope.callPackage ../../pkgs/build-zig-project/default.nix {
             inherit (closure-lib) purifier;
           };
         }
