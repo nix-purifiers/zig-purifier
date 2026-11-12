@@ -497,7 +497,7 @@ class Locker:
         return os.path.commonpath(dirs)
 
     def outputs_in_sandbox(self, partial_lock):
-        """Builds nix/lib/outputs.nix, which runs the build in the sandbox."""
+        """Builds pkgs/cli/outputs.nix, which runs the build in the sandbox."""
         cli = os.environ.get("ZIG_PURIFIER_CLI")
         if not cli:
             raise Failure(
@@ -1067,7 +1067,7 @@ def command_publish(args):
 
 
 def command_outputs(args):
-    """The builder of nix/lib/outputs.nix: ZIG FARM SRC PROJECT_DIR FLAGS."""
+    """The builder of pkgs/cli/outputs.nix: ZIG FARM SRC PROJECT_DIR FLAGS."""
     zig, farm, src, project_dir, flags = args
     work = os.path.join(os.environ.get("TMPDIR") or tempfile.mkdtemp(), "outputs")
     os.makedirs(work)

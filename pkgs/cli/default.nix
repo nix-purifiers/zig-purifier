@@ -18,7 +18,7 @@
 }:
 let
   # The purifier library and the nixpkgs library that this flake pins,
-  # which nix/lib/library.nix fetches for the evaluations without nixpkgs.
+  # which pkgs/cli/library.nix fetches for the evaluations without nixpkgs.
   lockNodes = (builtins.fromJSON (builtins.readFile ../../flake.lock)).nodes;
   libraries = builtins.toJSON {
     purifier = lockNodes.purifier.locked;
@@ -35,7 +35,12 @@ stdenvNoCC.mkDerivation {
     root = ../..;
     fileset = lib.fileset.unions [
       ./src
-      ../../nix/lib
+      ../../lib-overlays/default
+      ../build-zig-project
+      ./library.nix
+      ./outputs.nix
+      ./realize.nix
+      ./release.nix
     ];
   };
 
@@ -58,13 +63,16 @@ stdenvNoCC.mkDerivation {
 
   installPhase = ''
     runHook preInstall
-    mkdir -p $out/libexec/zig-purifier $out/share/zig-purifier/nix
+    mkdir -p $out/libexec/zig-purifier $out/share/zig-purifier/pkgs/cli
     cp pkgs/cli/src/zon.py pkgs/cli/src/zig_purifier.py $out/libexec/zig-purifier/
-    cp nix/lib/*.nix $out/share/zig-purifier/nix/
-    cp $librariesPath $out/share/zig-purifier/nix/libraries.json
+    mkdir -p $out/share/zig-purifier/lib-overlays
+    cp -r lib-overlays/default $out/share/zig-purifier/lib-overlays/default
+    cp -r pkgs/build-zig-project $out/share/zig-purifier/pkgs/build-zig-project
+    cp pkgs/cli/{library,outputs,realize,release}.nix $out/share/zig-purifier/pkgs/cli/
+    cp $librariesPath $out/share/zig-purifier/pkgs/cli/libraries.json
     makeWrapper ${lib.getExe python3} $out/bin/zig-purifier \
       --add-flags $out/libexec/zig-purifier/zig_purifier.py \
-      --set ZIG_PURIFIER_NIX_LIB $out/share/zig-purifier/nix \
+      --set ZIG_PURIFIER_NIX_LIB $out/share/zig-purifier/pkgs/cli \
       --set ZIG_PURIFIER_CLI $out/bin/zig-purifier \
       --prefix PATH : ${
         lib.makeBinPath [

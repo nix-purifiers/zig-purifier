@@ -23,7 +23,7 @@
   libDir ? ./.,
 }:
 let
-  lock = import (libDir + "/read-lock.nix") {
+  lock = import (libDir + "/../../lib-overlays/default/read-lock.nix") {
     src = null;
     inherit lockFile;
   };
@@ -43,7 +43,7 @@ let
   zig' = inStore "zig executable" zig;
   system = builtins.currentSystem;
   inherit
-    (import (libDir + "/packages.nix") {
+    (import (libDir + "/../build-zig-project/packages.nix") {
       inherit (lock) entries;
       inherit fetch system;
       cli = cli';
